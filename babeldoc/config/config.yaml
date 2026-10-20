@@ -1,0 +1,255 @@
+# BabelDOC Configuration
+# Author: Haibo Hu
+
+# ==================== General ====================
+# PDF file paths to translate (list)
+# files:
+#   - "input.pdf"
+
+# Use debug logging level
+debug: false
+
+# Only download and verify required assets and model then exit
+warmup: false
+
+# Working directory for translation. If not set, use temp directory.
+working_dir: null # TODO: add default value
+
+# Output directory for files. If not set, use same as input.
+output: null # TODO: add default value
+
+# Extra data for metadata, e.g. "time=2023-01-01"
+metadata_extra_data: null
+
+# Generate offline assets package in the specified directory
+generate_offline_assets: null
+
+# Restore offline assets package from the specified file
+restore_offline_assets: null
+
+# DEBUG ONLY: enable process pool
+enable_process_pool: false
+
+# ==================== Translation ====================
+# Default source language code
+lang_in: "en"
+
+# Default target language code
+lang_out: "zh"
+
+# Pages to translate. If not set, translate all pages. e.g. "1,2,1-,-3,3-5"
+pages: null
+
+# Minimum text length to translate 
+# NOTE: Development and Testing mode only. The default value is dependent on the actual scenario.
+min_text_length: 5
+
+# QPS limit of translation service, especially for llm translation stage.
+qps: 4
+
+# Ignore translation cache
+# NOTE: Development and Testing mode only. The default value is dependent on the actual scenario.
+ignore_cache: false
+
+# Do not output bilingual PDF files
+no_dual: false
+
+# Do not output monolingual PDF files
+no_mono: false
+
+# Progress report interval in seconds
+report_interval: 0.1
+
+# Custom system prompt for translation
+custom_system_prompt: null
+
+# Maximum number of pages per part for split translation. If not set, no splitting.
+# NOTE: Development and Testing mode only. The default value is dependent on the actual scenario.
+max_pages_per_part: null
+
+# Maximum number of worker threads for internal task processing pools.
+# If not specified, defaults to QPS value.
+pool_max_workers: null
+
+# Maximum number of worker threads dedicated to automatic term extraction.
+# If not specified, defaults to pool_max_workers (or QPS value when unset).
+term_pool_max_workers: null
+
+# Skip translation step
+skip_translation: false
+
+# Only parse PDF and generate output PDF without translation.
+# This skips all translation-related processing including layout analysis,
+# paragraph finding, style processing, and translation itself.
+# debug only
+only_parse_generate_pdf: false
+
+# Disable fallback translation when LLM output matches input text
+# NOTE: Development and Testing mode only. The default value is dependent on the actual scenario.
+disable_same_text_fallback: false
+
+# ==================== Layout / Document Analysis ====================
+# RPC service host address for document layout analysis (model variants 1-7)
+rpc_doclayout: null
+rpc_doclayout2: null
+rpc_doclayout3: null
+rpc_doclayout4: null
+rpc_doclayout5: null
+rpc_doclayout6: null
+rpc_doclayout7: null
+
+# ==================== Watermark ====================
+# Control watermark output mode: "watermarked", "no_watermark", "both"
+watermark_output_mode: "no_watermark"
+
+# [DEPRECATED] Use watermark_output_mode: "no_watermark" instead.
+no_watermark: false
+
+# ==================== Formula ====================
+# Font pattern to identify formula text
+formular_font_pattern: null
+
+# Character pattern to identify formula text
+formular_char_pattern: null
+
+# Add formula placeholder hint for translation.
+# Currently not recommended, it may affect translation quality.
+add_formula_placehold_hint: false
+
+# Skip formula offset calculation
+skip_formula_offset_calculation: false
+
+# ==================== Compatibility ====================
+# Skip PDF cleaning step
+skip_clean: false
+
+# Put translated pages first in dual PDF mode
+dual_translate_first: false
+
+# Disable rich text translation (may help improve compatibility with some PDFs)
+disable_rich_text_translate: false
+
+# Enable all compatibility enhancement options
+# (equivalent to skip_clean + dual_translate_first + disable_rich_text_translate)
+enhance_compatibility: false
+
+# Use alternating pages mode for dual PDF.
+# When enabled, original and translated pages are arranged in alternate order.
+use_alternating_pages_dual: false
+
+# ==================== Line / Paragraph ====================
+# Force split short lines into different paragraphs (may cause poor typesetting & bugs)
+split_short_lines: false
+
+# Split threshold factor. The actual threshold is the median length of all lines
+# on the current page * this factor
+short_line_split_factor: 0.8
+
+# Disable post-processing that merges alternating line-number layouts
+merge_alternating_line_numbers: true
+
+# ==================== OCR / Scanned ====================
+# Add text fill background (experimental)
+ocr_workaround: false
+
+# Skip scanned document detection (speeds up processing for non-scanned documents)
+skip_scanned_detection: false
+
+# Enable automatic OCR workaround. If a document is detected as heavily scanned,
+# this will attempt to enable OCR processing and skip further scan detection.
+auto_enable_ocr_workaround: false
+
+# ==================== Glossary / Term ====================
+# Comma-separated paths to glossary CSV files
+glossary_files: null
+
+# Disable automatic term extraction
+auto_extract_glossary: true
+
+# Save automatically extracted glossary terms to a CSV file in the output directory
+save_auto_extracted_glossary: false
+
+# ==================== Font ====================
+# Override primary font family for translated text.
+# Choices: "serif", "sans-serif", "script", null (auto)
+primary_font_family: null
+
+# ==================== Graphic / Render ====================
+# Disable graphic element process
+disable_graphic_element_process: false
+
+# Skip form rendering
+skip_form_render: false
+
+# Skip curve rendering
+skip_curve_render: false
+
+# Remove non-formula lines from paragraph areas.
+# This removes decorative lines that are not part of formulas,
+# while protecting lines in figure/table areas.
+remove_non_formula_lines: false
+
+# IoU threshold for detecting paragraph overlap when removing non-formula lines.
+# Higher values are more conservative.
+non_formula_line_iou_threshold: 0.9
+
+# IoU threshold for protecting lines in figure/table areas when removing non-formula lines.
+# Higher values provide more protection.
+figure_table_protection_threshold: 0.9
+
+# ==================== Output Control ====================
+# Only include translated pages in the output PDF. Effective only when pages is set.
+only_include_translated_page: false
+
+# ==================== Debug ====================
+# Show character box (debug only)
+show_char_box: false
+
+# Translate table text (experimental)
+translate_table_text: false
+
+# ==================== OpenAI ====================
+# Use OpenAI translator
+openai: true
+
+openai_config:
+  # The OpenAI model to use for translation
+  model: "deepseek-v4"
+
+  # The base URL for the OpenAI API
+  base_url: "http://10.16.6.191:3000/v1"
+
+  # The API key for the OpenAI API
+  api_key: ""
+
+  # OpenAI model to use for automatic term extraction. Defaults to model when unset.
+  term_extraction_model: null
+
+  # Base URL for the OpenAI API used during automatic term extraction.
+  # Falls back to base_url when unset.
+  term_extraction_base_url: null
+
+  # API key for the OpenAI API used during automatic term extraction.
+  # Falls back to api_key when unset.
+  term_extraction_api_key: null
+
+  # Enable JSON mode for OpenAI requests
+  enable_json_mode_if_requested: false
+
+  # Send DashScope data inspection header to disable input/output inspection
+  send_dashscope_header: false
+
+  # Send temperature parameter to OpenAI API
+  send_temperature: true
+
+  # Reasoning string to send in the OpenAI request body 'reasoning' field.
+  # If not set, the field is not sent.
+  reasoning: null
+
+  # DeepSeek-style thinking switch: "enabled" or "disabled".
+  # If not set, the field is not sent.
+  thinking: null
+
+  # Reasoning string for the OpenAI term extraction translator.
+  # If not set, no reasoning field is sent for term extraction requests.
+  term_extraction_reasoning: null

@@ -5,6 +5,8 @@ import time
 import unicodedata
 from abc import ABC
 from abc import abstractmethod
+from typing import List 
+from openai.types.chat import ChatCompletionMessageParam
 
 import httpx
 import openai
@@ -40,7 +42,7 @@ class RateLimiter:
         # Use monotonic time to prevent issues with system time changes
         self.next_request_time = time.monotonic()
 
-    def wait(self, _rate_limit_params: dict = None):
+    def wait(self, _rate_limit_params: dict | None = None):
         """
         Blocks until the next request can be processed, ensuring the rate limit is not exceeded.
         """
@@ -99,6 +101,7 @@ class BaseTranslator(ABC):
 
         self.translate_call_count = 0
         self.translate_cache_call_count = 0
+        self.model = None
 
     def __del__(self):
         with contextlib.suppress(Exception):
@@ -117,7 +120,7 @@ class BaseTranslator(ABC):
         """
         self.cache.add_params(k, v)
 
-    def translate(self, text, ignore_cache=False, rate_limit_params: dict = None):
+    def translate(self, text, ignore_cache=False, rate_limit_params: dict|None = None):
         """
         Translate the text, and the other part should call this method.
         :param text: text to translate
@@ -138,7 +141,7 @@ class BaseTranslator(ABC):
             self.cache.set(text, translation)
         return translation
 
-    def llm_translate(self, text, ignore_cache=False, rate_limit_params: dict = None):
+    def llm_translate(self, text, ignore_cache=False, rate_limit_params: dict|None = None):
         """
         Translate the text, and the other part should call this method.
         :param text: text to translate
@@ -165,7 +168,7 @@ class BaseTranslator(ABC):
         return translation
 
     @abstractmethod
-    def do_llm_translate(self, text, rate_limit_params: dict = None):
+    def do_llm_translate(self, text, rate_limit_params: dict |None = None):
         """
         Actual translate text, override this method
         :param text: text to translate
@@ -174,7 +177,7 @@ class BaseTranslator(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def do_translate(self, text, rate_limit_params: dict = None):
+    def do_translate(self, text, rate_limit_params: dict |None = None):
         """
         Actual translate text, override this method
         :param text: text to translate
@@ -230,7 +233,7 @@ class OpenAITranslator(BaseTranslator):
         self.client = openai.OpenAI(
             base_url=base_url,
             api_key=api_key,
-            http_client=httpx.Client(
+            http_client=httpx.Client( # pyright: ignore[reportArgumentType]
                 limits=httpx.Limits(
                     max_connections=None, max_keepalive_connections=None
                 ),
@@ -241,7 +244,7 @@ class OpenAITranslator(BaseTranslator):
             self.add_cache_impact_parameters("temperature", self.options["temperature"])
         self.model = model
         self.enable_json_mode_if_requested = enable_json_mode_if_requested
-        self.send_dashscope_header = send_dashscope_header
+        self.send_dashscope_header = send_dashscope_header # 阿里云 DashScope 平台
         self.send_temperature = send_temperature
         self.add_cache_impact_parameters("model", self.model)
         self.add_cache_impact_parameters("prompt", self.prompt(""))
@@ -268,7 +271,7 @@ class OpenAITranslator(BaseTranslator):
         wait=wait_exponential(multiplier=1, min=1, max=15),
         before_sleep=before_sleep_log(logger, logging.WARNING),
     )
-    def do_translate(self, text, rate_limit_params: dict = None) -> str:
+    def do_translate(self, text, rate_limit_params: dict|None = None) -> str:
         options = {}
         if self.send_temperature:
             options.update(self.options)
@@ -282,7 +285,7 @@ class OpenAITranslator(BaseTranslator):
         self.update_token_count(response)
         return response.choices[0].message.content.strip()
 
-    def prompt(self, text):
+    def prompt(self, text) -> List[ChatCompletionMessageParam]:
         return [
             {
                 "role": "system",
@@ -300,16 +303,16 @@ class OpenAITranslator(BaseTranslator):
         wait=wait_exponential(multiplier=1, min=1, max=15),
         before_sleep=before_sleep_log(logger, logging.WARNING),
     )
-    def do_llm_translate(self, text, rate_limit_params: dict = None):
+    def do_llm_translate(self, text, rate_limit_params: dict|None = None):
         if text is None:
             return None
 
         options = {}
         if self.send_temperature:
             options.update(self.options)
-        if self.enable_json_mode_if_requested and rate_limit_params.get(
+        if self.enable_json_mode_if_requested and (rate_limit_params and rate_limit_params.get(
             "request_json_mode", False
-        ):
+        )):
             options["response_format"] = {"type": "json_object"}
 
         extra_headers = {}

@@ -135,12 +135,17 @@ def save_pdf_with_same_path_fallback(
     doc_pdf: Document,
     output_pdf_path: str | Path,
 ) -> Document:
+    """
+    若 output_pdf_path != Path(xx(doc_pdf)), 直接保存到新地址
+    若 output_pdf_path == Path(xx(doc_pdf)), 覆盖保存
+    """
     output_pdf_path = Path(output_pdf_path)
     doc_name = Path(getattr(doc_pdf, "name", "") or "")
     if doc_name.resolve() != output_pdf_path.resolve():
         safe_save(doc_pdf, output_pdf_path)
         return doc_pdf
 
+    # ========== 原地覆盖场景 ==========
     saved_pdf_path = output_pdf_path.with_name(
         f"{output_pdf_path.stem}.saved{output_pdf_path.suffix}"
     )
@@ -439,6 +444,7 @@ class MemoryMonitor:
 
 
 def fix_null_page_content(doc: Document) -> list[int]:
+    # NOTE: 可能存在bug，从小到大删除 xref，索引会发生变化？
     invalid_page = []
     for x in range(len(doc)):
         xref = doc[x].xref
@@ -474,6 +480,7 @@ def fix_null_xref(doc: Document) -> None:
 
 
 def fix_filter(doc):
+    # 多流合并为单流，对应的 issue 是？
     page_contents = []
     for page in doc:
         page_contents.extend(page.get_contents())
@@ -862,6 +869,7 @@ def _do_translate_single(
         del doc_input
 
     # Continue with original processing
+    # 临时性保存文件 doc_pdf2zh
     temp_pdf_path = translation_config.get_working_file_path("input.pdf")
     doc_pdf2zh = open_pdf_with_save_fallback(original_pdf_path, temp_pdf_path)
 
@@ -874,6 +882,7 @@ def _do_translate_single(
     except Exception:
         logger.exception("auto fix failed, please check the pdf file")
 
+    # 备份字典
     mediabox_data = fix_media_box(doc_pdf2zh)
 
     # for page in doc_pdf2zh:
@@ -922,7 +931,7 @@ def _do_translate_single(
     if check_cid_char(docs):
         raise ExtractTextError("The document contains too many CID chars.")
 
-    # Skip all translation processing if only_parse_generate_pdf is enabled
+    # Skip all translation processing if only_parse_generate_pdf is enabled 调试参数
     if translation_config.only_parse_generate_pdf:
         logger.debug("only_parse_generate_pdf enabled, skipping translation processing")
         # Skip directly to PDF generation

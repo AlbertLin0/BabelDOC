@@ -112,6 +112,7 @@ class DetectScannedFile:
             for page in pages_to_translate:
                 if scanned < threshold and non_scanned < non_scanned_threshold:
                     # Only continue detection if both counts are below thresholds
+                    # 使用 pdf_creater 比较去除文字层后的两个PDF相似度，判断是否为扫描件
                     is_scanned = self.detect_page_is_scanned(page, mupdf, pdf_creater)
                     if is_scanned:
                         scanned += 1

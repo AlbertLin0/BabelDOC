@@ -472,21 +472,21 @@ async def main():
     if args.debug:
         logging.getLogger().setLevel(logging.DEBUG)
 
-    if args.generate_offline_assets:
+    if args.generate_offline_assets:            # 下载所需的必须资源 如ONNX模型、字体、CMap等 为离线部署做准备
         babeldoc.assets.assets.generate_offline_assets_package(
             Path(args.generate_offline_assets)
         )
         logger.info("Offline assets package generated, exiting...")
         return
 
-    if args.restore_offline_assets:
+    if args.restore_offline_assets:            # 从离线资源包恢复资源   
         babeldoc.assets.assets.restore_offline_assets_package(
             Path(args.restore_offline_assets)
         )
         logger.info("Offline assets package restored, exiting...")
         return
 
-    if args.warmup:
+    if args.warmup:                            # 预热模型（下载），确保在生产环境中快速响应
         babeldoc.assets.assets.warmup()
         logger.info("Warmup completed, exiting...")
         return
@@ -574,7 +574,7 @@ async def main():
         from babeldoc.docvision.rpc_doclayout6 import RpcDocLayoutModel
 
         doc_layout_model = RpcDocLayoutModel(host=args.rpc_doclayout6)
-    elif args.rpc_doclayout7:
+    elif args.rpc_doclayout7: # 生产环境使用该模型
         from babeldoc.docvision.rpc_doclayout7 import RpcDocLayoutModel
 
         doc_layout_model = RpcDocLayoutModel(host=args.rpc_doclayout7)
@@ -742,7 +742,7 @@ async def main():
 
         def nop(_x):
             pass
-
+        # NOTE：字体映射逻辑是？
         getattr(doc_layout_model, "init_font_mapper", nop)(config)
         # Create progress handler
         progress_context, progress_handler = create_progress_handler(
@@ -929,6 +929,8 @@ def cli():
     logging.getLogger("http11").propagate = False
     for v in logging.Logger.manager.loggerDict.values():
         if getattr(v, "name", None) is None:
+            continue
+        if not isinstance(v, logging.Logger):
             continue
         if (
             v.name.startswith("pdfminer")
