@@ -16,7 +16,8 @@ warmup: false
 working_dir: null # TODO: add default value
 
 # Output directory for files. If not set, use same as input.
-output: null # TODO: add default value
+output_dir: "../test/outputs" # TODO: add default value
+upload_dir: "../test/uploads" # TODO: add default value
 
 # Extra data for metadata, e.g. "time=2023-01-01"
 metadata_extra_data: null
@@ -220,7 +221,7 @@ openai_config:
   base_url: "http://10.16.6.191:3000/v1"
 
   # The API key for the OpenAI API
-  api_key: ""
+  api_key: "sk-YmydpDkwEHMpElGtNntVubIXCOcmrsCTxBvEmQIyYD7Yxh7j"
 
   # OpenAI model to use for automatic term extraction. Defaults to model when unset.
   term_extraction_model: null
@@ -253,3 +254,14 @@ openai_config:
   # Reasoning string for the OpenAI term extraction translator.
   # If not set, no reasoning field is sent for term extraction requests.
   term_extraction_reasoning: null
+
+max_concurrent_translations: 10
+task_timeout: 3600
+
+mineru_base_url: "http://10.16.6.191:8001"
+# mineru parameters setted in _mineru.py
+
+# PO API 
+ES_OUTPUT: "ES_OUTPUT"
+BSKEY: "BSKEY"
+SAPKEY: "SAPKEY"

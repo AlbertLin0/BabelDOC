@@ -1,0 +1,463 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PDF 智能翻译工作台</title>
+
+  <style>
+    :root {
+      --bg: #f4f6fb; --surface: #fff; --text: #172033; --muted: #69758b;
+      --line: #e4e9f2; --primary: #4f65e8; --primary-dark: #394dcc;
+      --soft: #eef1ff; --green: #16845b; --red: #c43d4b; --shadow: 0 12px 36px rgba(31, 45, 82, .08);
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--text); }
+    button, input { font: inherit; }
+    .topbar { height: 68px; display:flex; align-items:center; justify-content:space-between; padding: 0 5vw; background: rgba(255,255,255,.92); border-bottom:1px solid var(--line); }
+    .brand { display:flex; align-items:center; gap:12px; font-weight:750; letter-spacing:-.3px; }
+    .brand-icon { width:36px; height:36px; display:grid; place-items:center; color:#fff; background:linear-gradient(140deg,#6578ff,#4657d8); border-radius:11px; box-shadow:0 5px 12px #5366e833; }
+    .brand small { display:block; font-weight:500; font-size:11px; color:var(--muted); letter-spacing:1.4px; margin-top:2px; }
+    .status { color:var(--muted); font-size:13px; display:flex; align-items:center; gap:8px; }
+    .dot { width:8px; height:8px; background:#27ae78; border-radius:50%; box-shadow:0 0 0 4px #27ae781a; }
+    main { max-width:1280px; margin:0 auto; padding:36px 24px 52px; }
+    .heading { margin-bottom:25px; }
+    .eyebrow { font-size:12px; text-transform:uppercase; letter-spacing:1.8px; color:var(--primary); font-weight:750; }
+    h1 { font-size:clamp(27px,3vw,36px); margin:9px 0 8px; letter-spacing:-1px; }
+    .subtitle { color:var(--muted); font-size:14px; line-height:1.7; margin:0; }
+    .workspace { display:grid; grid-template-columns: 360px minmax(0,1fr); gap:22px; align-items:start; }
+    .panel { background:var(--surface); border:1px solid var(--line); border-radius:18px; box-shadow:var(--shadow); overflow:hidden; }
+    .panel-head { padding:20px 22px; border-bottom:1px solid var(--line); }
+    .panel-head h2 { font-size:16px; margin:0 0 5px; }
+    .panel-head p { font-size:12px; color:var(--muted); margin:0; }
+    .upload-body { padding:22px; }
+    .dropzone { border:1.5px dashed #bdc7df; background:#fafbff; border-radius:14px; min-height:218px; padding:24px 16px; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; transition:.18s; cursor:pointer; }
+    .dropzone.drag { border-color:var(--primary); background:var(--soft); transform:translateY(-1px); }
+    .upload-icon { width:54px; height:54px; display:grid; place-items:center; border-radius:16px; color:var(--primary); background:var(--soft); margin-bottom:15px; }
+    .drop-title { font-size:14px; font-weight:700; margin-bottom:7px; }
+    .drop-sub { font-size:12px; color:var(--muted); line-height:1.7; }
+    .browse { color:var(--primary); font-weight:700; }
+    .file-info { display:none; align-items:center; gap:12px; margin-top:15px; padding:12px; border:1px solid var(--line); border-radius:12px; }
+    .file-badge { width:38px; height:42px; display:grid; place-items:center; border-radius:8px; background:#fff0f0; color:#d84d5b; font-size:11px; font-weight:800; border:1px solid #ffe0e0; }
+    .file-meta { min-width:0; flex:1; }
+    .file-name { font-size:12px; font-weight:700; overflow-wrap:anywhere; }
+    .file-size { font-size:11px; color:var(--muted); margin-top:4px; }
+    .remove { border:0; background:transparent; color:#8b95a8; cursor:pointer; font-size:20px; padding:4px 7px; }
+    .primary-btn { width:100%; border:0; border-radius:11px; padding:13px 16px; color:#fff; background:var(--primary); font-weight:700; cursor:pointer; margin-top:18px; display:flex; align-items:center; justify-content:center; gap:9px; transition:.15s; }
+    .primary-btn:hover:not(:disabled) { background:var(--primary-dark); transform:translateY(-1px); }
+    .primary-btn:disabled { opacity:.45; cursor:not-allowed; }
+    .note { display:flex; gap:9px; color:var(--muted); font-size:11px; line-height:1.65; margin-top:15px; }
+    .note svg { flex-shrink:0; margin-top:1px; }
+    .progress-wrap { display:none; margin-top:18px; }
+    .progress-label { display:flex; justify-content:space-between; font-size:12px; color:var(--muted); margin-bottom:8px; }
+    .progress { height:6px; background:#edf0f7; border-radius:10px; overflow:hidden; }
+    .progress-bar { height:100%; width:12%; border-radius:10px; background:linear-gradient(90deg,#697bff,#4f65e8); transition:width .35s; }
+    .error { display:none; color:var(--red); background:#fff3f4; border:1px solid #ffdadd; padding:11px 12px; border-radius:10px; font-size:12px; line-height:1.6; margin-top:14px; overflow-wrap:anywhere; }
+    .viewer { min-height:630px; }
+    .viewer-head { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:18px 22px; border-bottom:1px solid var(--line); }
+    .viewer-title { font-size:16px; font-weight:750; }
+    .viewer-sub { font-size:12px; color:var(--muted); margin-top:4px; }
+    .tabs { display:flex; gap:5px; padding:12px 20px; border-bottom:1px solid var(--line); background:#fcfcfe; }
+    .tab { border:0; background:transparent; color:var(--muted); padding:9px 14px; border-radius:8px; font-size:12px; font-weight:650; cursor:pointer; }
+    .tab.active { color:var(--primary); background:var(--soft); }
+    .preview-area { min-height:520px; background:#f7f8fc; padding:20px; }
+    .empty { min-height:475px; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; color:var(--muted); }
+    .empty-art { width:104px; height:104px; border-radius:28px; display:grid; place-items:center; background:#fff; border:1px solid var(--line); color:#aab5ce; margin-bottom:20px; }
+    .empty strong { color:#4a566c; font-size:14px; margin-bottom:8px; }
+    .empty span { max-width:270px; font-size:12px; line-height:1.8; }
+    .pdf-frame { width:100%; height:690px; border:1px solid #e0e5ef; border-radius:10px; background:#fff; display:none; }
+    .preview-tip { font-size:11px; color:#8b95a8; text-align:center; padding:12px 0 0; }
+    footer { text-align:center; color:#9aa3b5; font-size:11px; padding-top:25px; }
+    @media(max-width:900px) { .workspace { grid-template-columns:1fr; } .viewer { min-height:500px; } .pdf-frame { height:620px; } }
+    @media(max-width:520px) { .topbar { padding:0 18px; } .status { display:none; } main { padding:25px 14px 35px; } .viewer-head { padding:16px; align-items:flex-start; flex-direction:column; } .preview-area { padding:10px; } .tabs { padding:10px; } .tab { padding:8px 10px; } }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-icon" aria-hidden="true">
+        <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 3.5h7l5 5V20a1.5 1.5 0 0 1-1.5 1.5h-10A1.5 1.5 0 0 1 6 20V5A1.5 1.5 0 0 1 7.5 3.5Z"/><path d="M14 3.5V9h5M9 13h6M9 16.5h6"/></svg>
+      </div>
+      <div>PDF 翻译工作台<small>DOCUMENT TRANSLATION STUDIO</small></div>
+    </div>
+    <div class="status"><span class="dot"></span> 翻译服务工作区</div>
+  </header>
+
+  <main>
+    <div class="heading">
+      <div class="eyebrow">AI DOCUMENT WORKSPACE</div>
+      <h1>让文档翻译更简单</h1>
+      <p class="subtitle">上传 PDF 文档，启动智能翻译，并在同一工作区预览译文与双语对照版本。</p>
+    </div>
+
+    <div class="workspace">
+      <section class="panel">
+        <div class="panel-head">
+          <h2>上传文档</h2>
+          <p>选择需要翻译的 PDF 文件</p>
+        </div>
+        <div class="upload-body">
+          <input id="fileInput" type="file" accept="application/pdf,.pdf" hidden />
+          <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="选择或拖放 PDF 文件">
+            <div class="upload-icon">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5"/><path d="M5 14v4.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V14"/></svg>
+            </div>
+            <div class="drop-title">拖放 PDF 文件到这里</div>
+            <div class="drop-sub">或 <span class="browse">点击浏览文件</span><br />仅支持 PDF 格式</div>
+          </div>
+
+          <div class="file-info" id="fileInfo">
+            <div class="file-badge">PDF</div>
+            <div class="file-meta"><div class="file-name" id="fileName"></div><div class="file-size" id="fileSize"></div></div>
+            <button class="remove" id="removeFile" title="移除文件" aria-label="移除文件">×</button>
+          </div>
+
+          <button class="primary-btn" id="translateBtn" disabled>
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5h9M8.5 3v2m4 0c-.5 4-3 7-6.5 9M6 8c1.5 2.5 3.5 4.5 6 5.5M13 20l4-10 4 10M14.5 17h5"/></svg>
+            开始翻译
+          </button>
+
+          <div class="progress-wrap" id="progressWrap">
+            <div class="progress-label"><span id="progressText">正在上传文档…</span><span id="progressPercent">处理中</span></div>
+            <div class="progress"><div class="progress-bar" id="progressBar"></div></div>
+          </div>
+          <div class="error" id="errorBox"></div>
+
+          <div class="note">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="M12 11v5m0-8h.01"/></svg>
+            <span>翻译过程可能需要一些时间，请勿关闭页面。完成后将自动加载译文预览。</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel viewer">
+        <div class="viewer-head">
+          <div><div class="viewer-title">文档预览</div><div class="viewer-sub" id="viewerSub">翻译结果将在这里显示</div></div>
+
+        </div>
+        <div class="tabs" role="tablist">
+          <button class="tab active" data-view="mono" role="tab">纯译文</button>
+          <button class="tab" data-view="dual" role="tab">双语对照</button>
+          <button class="tab" data-view="original" role="tab">原始文档</button>
+        </div>
+        <div class="preview-area">
+          <div class="empty" id="emptyState">
+            <div class="empty-art">
+              <svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M13 5.5h15l9 9V41a2 2 0 0 1-2 2H13a2 2 0 0 1-2-2V7.5a2 2 0 0 1 2-2Z"/><path d="M28 5.5v10h9M17 23h16M17 29h16M17 35h10"/></svg>
+            </div>
+            <strong>等待上传 PDF 文档</strong>
+            <span>上传文件并点击“开始翻译”，处理完成后即可在此切换查看纯译文和双语对照 PDF。</span>
+          </div>
+          <iframe class="pdf-frame" id="pdfFrame" title="PDF 文档预览"></iframe>
+          <div class="preview-tip" id="previewTip" style="display:none">如果浏览器无法内嵌显示 PDF，可点击下载按钮后使用 PDF 阅读器查看。</div>
+        </div>
+      </section>
+    </div>
+    <footer>PDF Translation Studio · 文档仅用于本次翻译请求</footer>
+  </main>
+
+  <script>
+    // 修改为后端实际可访问的地址；前后端不同源时，后端需开启 CORS。
+    const API_BASE = "http://localhost:8086";
+    const API_STREAM_URL = API_BASE + "/translate/stream";
+
+    // 阶段中文名映射
+    const STAGE_LABELS = {
+      "CheckInputFile": "检查输入文件",
+      "SplitFile": "拆分文件",
+      "PrepareInputFile": "准备输入文件",
+      "DetectScannedFile": "检测扫描件",
+      "LayoutParser": "版面分析",
+      "ParagraphFinder": "段落识别",
+      "StylesAndFormulas": "样式与公式",
+      "ILTranslator": "智能翻译",
+      "Typesetting": "排版",
+      "PDFCreater": "生成PDF",
+    };
+    function stageLabel(name) {
+      return STAGE_LABELS[name] || name;
+    }
+
+    const fileInput = document.getElementById("fileInput");
+    const dropzone = document.getElementById("dropzone");
+    const fileInfo = document.getElementById("fileInfo");
+    const fileName = document.getElementById("fileName");
+    const fileSize = document.getElementById("fileSize");
+    const translateBtn = document.getElementById("translateBtn");
+    const removeFile = document.getElementById("removeFile");
+    const progressWrap = document.getElementById("progressWrap");
+    const progressText = document.getElementById("progressText");
+    const progressPercent = document.getElementById("progressPercent");
+    const progressBar = document.getElementById("progressBar");
+    const errorBox = document.getElementById("errorBox");
+    const emptyState = document.getElementById("emptyState");
+    const pdfFrame = document.getElementById("pdfFrame");
+    const previewTip = document.getElementById("previewTip");
+    const viewerSub = document.getElementById("viewerSub");
+    let selectedFile = null;
+    let originalUrl = null;
+    let monoUrl = null;
+    let dualUrl = null;
+    let currentView = "mono";
+    let busy = false;
+
+    function formatBytes(bytes) {
+      if (bytes < 1024) return bytes + " B";
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+      return (bytes / (1024 * 1024)).toFixed(2) + " MB";
+    }
+
+    function clearUrl(url) { if (url) URL.revokeObjectURL(url); }
+    function clearResultUrls() {
+      [monoUrl, dualUrl].forEach(clearUrl);
+      monoUrl = dualUrl = null;
+    }
+    function showError(message) {
+      errorBox.textContent = message;
+      errorBox.style.display = "block";
+    }
+    function hideError() {
+      errorBox.textContent = "";
+      errorBox.style.display = "none";
+    }
+
+    function setFile(file) {
+      hideError();
+      if (!file) return;
+      if (!file.name.toLowerCase().endsWith(".pdf") && file.type !== "application/pdf") {
+        showError("文件格式不正确，请选择 PDF 文件。");
+        return;
+      }
+      selectedFile = file;
+      clearUrl(originalUrl);
+      originalUrl = URL.createObjectURL(file);
+      clearResultUrls();
+      fileName.textContent = file.name;
+      fileSize.textContent = formatBytes(file.size);
+      fileInfo.style.display = "flex";
+      translateBtn.disabled = busy ? true : false;
+      emptyState.style.display = "flex";
+      pdfFrame.style.display = "none";
+      previewTip.style.display = "none";
+      viewerSub.textContent = "已选择文档，等待翻译";
+      currentView = "original";
+      setActiveTab("original");
+    }
+
+    function resetFile() {
+      if (busy) return;
+      selectedFile = null;
+      fileInput.value = "";
+      fileInfo.style.display = "none";
+      translateBtn.disabled = true;
+      clearUrl(originalUrl);
+      originalUrl = null;
+      clearResultUrls();
+      hideError();
+      pdfFrame.removeAttribute("src");
+      pdfFrame.style.display = "none";
+      previewTip.style.display = "none";
+      emptyState.style.display = "flex";
+      viewerSub.textContent = "翻译结果将在这里显示";
+      setActiveTab("mono");
+    }
+
+    function setActiveTab(view) {
+      currentView = view;
+      document.querySelectorAll(".tab").forEach(tab => {
+        const active = tab.dataset.view === view;
+        tab.classList.toggle("active", active);
+        tab.setAttribute("aria-selected", String(active));
+      });
+      renderPreview();
+    }
+
+    function renderPreview() {
+      let url = null;
+      let label = "";
+      if (currentView === "original") { url = originalUrl; label = "原始文档"; }
+      else if (currentView === "mono") { url = monoUrl; label = "纯译文"; }
+      else { url = dualUrl; label = "双语对照"; }
+
+      if (!url) {
+        pdfFrame.style.display = "none";
+        previewTip.style.display = "none";
+        emptyState.style.display = "flex";
+        if (currentView !== "original" && !monoUrl && !dualUrl) {
+          viewerSub.textContent = "翻译结果将在这里显示";
+        }
+        return;
+      }
+      emptyState.style.display = "none";
+      pdfFrame.src = url;
+      pdfFrame.style.display = "block";
+      previewTip.style.display = "block";
+      viewerSub.textContent = label + " · " + (selectedFile ? selectedFile.name : "PDF");
+    }
+
+    dropzone.addEventListener("click", () => fileInput.click());
+    dropzone.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fileInput.click(); } });
+    fileInput.addEventListener("change", e => setFile(e.target.files[0]));
+    removeFile.addEventListener("click", resetFile);
+    dropzone.addEventListener("dragover", e => { e.preventDefault(); dropzone.classList.add("drag"); });
+    dropzone.addEventListener("dragleave", () => dropzone.classList.remove("drag"));
+    dropzone.addEventListener("drop", e => {
+      e.preventDefault(); dropzone.classList.remove("drag");
+      if (e.dataTransfer.files.length) setFile(e.dataTransfer.files[0]);
+    });
+    document.querySelectorAll(".tab").forEach(tab => tab.addEventListener("click", () => setActiveTab(tab.dataset.view)));
+
+    async function readError(response) {
+      const contentType = response.headers.get("content-type") || "";
+      if (contentType.includes("application/json")) {
+        const body = await response.json().catch(() => ({}));
+        return body.detail || body.message || JSON.stringify(body);
+      }
+      return (await response.text().catch(() => "")) || `HTTP ${response.status}`;
+    }
+
+    translateBtn.addEventListener("click", () => {
+      if (!selectedFile || busy) return;
+      busy = true;
+      translateBtn.disabled = true;
+      removeFile.disabled = true;
+      hideError();
+      clearResultUrls();
+      progressWrap.style.display = "block";
+      progressText.textContent = "正在上传并提交翻译任务…";
+      progressPercent.textContent = "0%";
+      progressBar.style.width = "0%";
+
+      const formData = new FormData();
+      formData.append("file", selectedFile, selectedFile.name);
+
+      // EventSource 只支持 GET，因此先用 POST 上传文件获取 task_id，再用 EventSource 监听进度
+      // 但 SSE 也可以通过 POST + fetch 的 ReadableStream 实现，这里采用更简单的方案：
+      // 直接用 fetch 上传，返回的响应体是 text/event-stream，手动解析
+      fetch(API_STREAM_URL, { method: "POST", body: formData })
+        .then(async (response) => {
+          if (!response.ok) throw new Error(await readError(response));
+
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = "";
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+
+            // SSE 消息以空行分隔
+            const lines = buffer.split("\n\n");
+            buffer = lines.pop(); // 保留未完成的部分
+
+            for (const block of lines) {
+              const lines = block.split("\n");
+              let eventType = "message";
+              let dataStr = "";
+              for (const line of lines) {
+                if (line.startsWith("event: ")) {
+                  eventType = line.slice(6).trim();
+                } else if (line.startsWith("data: ")) {
+                  dataStr += line.slice(6);
+                }
+              }
+              if (!dataStr) continue;
+
+              let data;
+              try { data = JSON.parse(dataStr); } catch { continue; }
+
+              handleSSEEvent(eventType, data);
+            }
+          }
+        })
+        .catch((err) => {
+          if (err.name === "AbortError") return;
+          showError("翻译失败：" + (err.message || "请求异常"));
+          progressText.textContent = "处理失败";
+          progressPercent.textContent = "失败";
+        })
+        .finally(() => {
+          busy = false;
+          translateBtn.disabled = !selectedFile;
+          removeFile.disabled = false;
+        });
+    });
+
+    function handleSSEEvent(eventType, data) {
+      switch (eventType) {
+        case "stage_summary":
+          progressText.textContent = "开始翻译…";
+          break;
+
+        case "progress_start":
+          progressText.textContent = `正在${stageLabel(data.stage)}…`;
+          break;
+
+        case "progress_update":
+          if (data.overall_progress != null) {
+            const pct = Math.round(data.overall_progress);
+            progressBar.style.width = pct + "%";
+            progressPercent.textContent = pct + "%";
+          }
+          progressText.textContent = `正在${stageLabel(data.stage)}… ${data.stage_current || 0}/${data.stage_total || 0}`;
+          break;
+
+        case "progress_end":
+          if (data.overall_progress != null) {
+            const pct = Math.round(data.overall_progress);
+            progressBar.style.width = pct + "%";
+            progressPercent.textContent = pct + "%";
+          }
+          break;
+
+        case "detected Scanned File":
+          progressText.textContent = "检测到扫描件，正在调用 OCR 引擎处理…";
+          break;
+
+        case "translation_complete":
+          progressBar.style.width = "100%";
+          progressPercent.textContent = "100%";
+          progressText.textContent = "翻译完成，正在加载预览…";
+          loadResults(data.mono_url, data.dual_url);
+          break;
+
+        case "finish":
+          // finish 事件已由 translation_complete 处理结果，这里可忽略
+          break;
+
+        case "error":
+          showError("翻译失败：" + (data.message || "未知错误"));
+          progressText.textContent = "处理失败";
+          progressPercent.textContent = "失败";
+          break;
+      }
+    }
+
+    async function loadResults(monoUrlPath, dualUrlPath) {
+      try {
+        const monoRes = await fetch(API_BASE + monoUrlPath);
+        if (!monoRes.ok) throw new Error("下载单语结果失败");
+        const monoBlob = new Blob([await monoRes.arrayBuffer()], { type: "application/pdf" });
+        if (monoBlob.size) monoUrl = URL.createObjectURL(monoBlob);
+
+        const dualRes = await fetch(API_BASE + dualUrlPath);
+        if (dualRes.ok) {
+          const dualBlob = new Blob([await dualRes.arrayBuffer()], { type: "application/pdf" });
+          if (dualBlob.size) dualUrl = URL.createObjectURL(dualBlob);
+        }
+
+        progressText.textContent = "翻译完成";
+        viewerSub.textContent = "已生成翻译结果";
+        setActiveTab("mono");
+      } catch (err) {
+        showError("加载结果失败：" + (err.message || "请求异常"));
+      }
+    }
+
+    window.addEventListener("beforeunload", () => {
+      [originalUrl, monoUrl, dualUrl].forEach(clearUrl);
+    });
+  </script>
+</body>
+</html>

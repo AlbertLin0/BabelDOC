@@ -948,6 +948,362 @@ def cli():
     asyncio.run(main())
 
 
+def log_setup():
+    
+    from rich.logging import RichHandler
+
+    logging.basicConfig(level=logging.INFO, handlers=[RichHandler()])
+
+    logging.getLogger("httpx").setLevel("CRITICAL")
+    logging.getLogger("httpx").propagate = False
+    logging.getLogger("openai").setLevel("CRITICAL")
+    logging.getLogger("openai").propagate = False
+    logging.getLogger("httpcore").setLevel("CRITICAL")
+    logging.getLogger("httpcore").propagate = False
+    logging.getLogger("http11").setLevel("CRITICAL")
+    logging.getLogger("http11").propagate = False
+    for v in logging.Logger.manager.loggerDict.values():
+        if getattr(v, "name", None) is None:
+            continue
+        if not isinstance(v, logging.Logger):
+            continue
+        if (
+            v.name.startswith("pdfminer")
+            or v.name.startswith("peewee")
+            or v.name.startswith("httpx")
+            or "http11" in v.name
+            or "openai" in v.name
+            or "pdfminer" in v.name
+        ):
+            v.disabled = True
+            v.propagate = False
+
+    speed_up_logs()
+    return 
+
+def prepare():
+    log_setup()
+    babeldoc.format.pdf.high_level.init()
+    
+    # 读取 config.yaml 文件
+    import yaml 
+    with open("./config/config.yaml", "r") as f:
+        config = yaml.safe_load(f)
+
+    # 初始化配置
+    if config["debug"]:
+        logging.getLogger().setLevel(logging.DEBUG)
+
+    if config["generate_offline_assets"]:            # 下载所需的必须资源 如ONNX模型、字体、CMap等 为离线部署做准备
+        babeldoc.assets.assets.generate_offline_assets_package(
+            Path(config["generate_offline_assets"])
+        )
+        logger.info("Offline assets package generated, exiting...")
+        return
+
+    if config["restore_offline_assets"]:            # 从离线资源包恢复资源   
+        babeldoc.assets.assets.restore_offline_assets_package(
+            Path(config["restore_offline_assets"])
+        )
+        logger.info("Offline assets package restored, exiting...")
+        return
+
+    if config["warmup"]:                            # 预热模型（下载），确保在生产环境中快速响应
+        babeldoc.assets.assets.warmup()
+        logger.info("Warmup completed, exiting...")
+        return
+
+        # 验证翻译服务选择
+    if not config["openai"]:
+        logger.error("必须选择一个翻译服务：--openai")
+
+    # 验证 OpenAI 参数
+    if config["openai"] and not config["openai_api_key"]:
+        logger.error("使用 OpenAI 服务时必须提供 API key")
+
+    if config["enable_process_pool"]:
+        enable_process_pool()
+
+    # 实例化翻译器
+    if config["openai"]:
+        translator_kwargs: dict[str, Any] = {}
+        if config["openai_reasoning"] is not None:
+            translator_kwargs["reasoning"] = config["openai_reasoning"]
+        if config["openai_thinking"] is not None:
+            translator_kwargs["thinking"] = config["openai_thinking"]
+        translator = OpenAITranslator(
+            lang_in=config["lang_in"],
+            lang_out=config["lang_out"],
+            model=config["openai_model"],
+            base_url=config["openai_base_url"],
+            api_key=config["openai_api_key"],
+            ignore_cache=config["ignore_cache"],
+            enable_json_mode_if_requested=config["enable_json_mode_if_requested"],
+            send_dashscope_header=config["send_dashscope_header"],
+            send_temperature=not config["no_send_temperature"],
+            **translator_kwargs,
+        )
+        term_extraction_translator = translator
+        if (
+            config["openai_term_extraction_model"]
+            or config["openai_term_extraction_base_url"]
+            or config["openai_term_extraction_api_key"]
+        ):
+            term_translator_kwargs: dict[str, Any] = {}
+            if config["openai_term_extraction_reasoning"] is not None:
+                term_translator_kwargs["reasoning"] = (
+                    config["openai_term_extraction_reasoning"]
+                )
+            term_extraction_translator = OpenAITranslator(
+                lang_in=config["lang_in"],
+                lang_out=config["lang_out"],
+                model=config["openai_term_extraction_model"] or config["openai_model"],
+                base_url=(config["openai_term_extraction_base_url"] or config["openai_base_url"]),
+                api_key=config["openai_term_extraction_api_key"] or config["openai_api_key"],
+                ignore_cache=config["ignore_cache"],
+                enable_json_mode_if_requested=config["enable_json_mode_if_requested"],
+                send_dashscope_header=config["send_dashscope_header"],
+                send_temperature=not config["no_send_temperature"],
+                **term_translator_kwargs,
+            )
+    else:
+        raise ValueError("Invalid translator type")
+
+    # 设置翻译速率限制
+    set_translate_rate_limiter(config["qps"])
+    # 初始化文档布局模型
+    if config["rpc_doclayout"]:
+        from babeldoc.docvision.rpc_doclayout import RpcDocLayoutModel
+
+        doc_layout_model = RpcDocLayoutModel(host=config["rpc_doclayout"])
+    elif config["rpc_doclayout2"]:
+        from babeldoc.docvision.rpc_doclayout2 import RpcDocLayoutModel
+
+        doc_layout_model = RpcDocLayoutModel(host=config["rpc_doclayout2"])
+    elif config["rpc_doclayout3"]:
+        from babeldoc.docvision.rpc_doclayout3 import RpcDocLayoutModel
+
+        doc_layout_model = RpcDocLayoutModel(host=config["rpc_doclayout3"])
+    elif config["rpc_doclayout4"]:
+        from babeldoc.docvision.rpc_doclayout4 import RpcDocLayoutModel
+
+        doc_layout_model = RpcDocLayoutModel(host=config["rpc_doclayout4"])
+    elif config["rpc_doclayout5"]:
+        from babeldoc.docvision.rpc_doclayout5 import RpcDocLayoutModel
+
+        doc_layout_model = RpcDocLayoutModel(host=config["rpc_doclayout5"])
+    elif config["rpc_doclayout6"]:
+        from babeldoc.docvision.rpc_doclayout6 import RpcDocLayoutModel
+
+        doc_layout_model = RpcDocLayoutModel(host=config["rpc_doclayout6"])
+    elif config["rpc_doclayout7"]: # 生产环境使用该模型
+        from babeldoc.docvision.rpc_doclayout7 import RpcDocLayoutModel
+
+        doc_layout_model = RpcDocLayoutModel(host=config["rpc_doclayout7"])
+    else:
+        from babeldoc.docvision.doclayout import DocLayoutModel
+
+        doc_layout_model = DocLayoutModel.load_onnx()
+
+    if config["translate_table_text"]:
+        from babeldoc.docvision.table_detection.rapidocr import RapidOCRModel
+
+        table_model = RapidOCRModel()
+    else:
+        table_model = None
+    
+    # Load glossaries
+    loaded_glossaries: list[Glossary] = []
+    if config["glossary_files"]:
+        paths_str = config["glossary_files"].split(",")
+        for p_str in paths_str:
+            file_path = Path(p_str.strip())
+            if not file_path.exists():
+                logger.error(f"Glossary file not found: {file_path}")
+                continue
+            if not file_path.is_file():
+                logger.error(f"Glossary path is not a file: {file_path}")
+                continue
+            try:
+                glossary_obj = Glossary.from_csv(file_path, config["lang_out"])
+                if glossary_obj.entries:
+                    loaded_glossaries.append(glossary_obj)
+                    logger.info(
+                        f"Loaded glossary '{glossary_obj.name}' with {len(glossary_obj.entries)} entries."
+                    )
+                else:
+                    logger.info(
+                        f"Glossary '{file_path.stem}' loaded with no applicable entries for lang_out '{args.lang_out}'."
+                    )
+            except Exception as e:
+                logger.error(f"Failed to load glossary from {file_path}: {e}")
+
+    if config["output"]:
+        if not Path(config["output"]).exists():
+            logger.info(f"输出目录不存在，创建：{config['output']}")
+            try:
+                Path(config["output"]).mkdir(parents=True, exist_ok=True)
+            except OSError:
+                logger.critical(
+                    f"Failed to create output folder at {config['output']}",
+                    exc_info=True,
+                )
+                exit(1)
+    else:
+        config["output"] = None
+
+    if config["working_dir"]:
+        working_dir = Path(config["working_dir"])
+        if not working_dir.exists():
+            logger.info(f"工作目录不存在，创建：{config['working_dir']}")
+            try:
+                working_dir.mkdir(parents=True, exist_ok=True)
+            except OSError:
+                logger.critical(
+                    f"Failed to create working directory at {working_dir}",
+                    exc_info=True,
+                )
+                exit(1)
+    else:
+        working_dir = None
+
+    watermark_output_mode = WatermarkOutputMode.Watermarked
+    if config["no_watermark"]:
+        watermark_output_mode = WatermarkOutputMode.NoWatermark
+    elif config["watermark_output_mode"] == "both":
+        watermark_output_mode = WatermarkOutputMode.Both
+    elif config["watermark_output_mode"] == "watermarked":
+        watermark_output_mode = WatermarkOutputMode.Watermarked
+    elif config["watermark_output_mode"] == "no_watermark":
+        watermark_output_mode = WatermarkOutputMode.NoWatermark
+
+    split_strategy = None
+    if config["max_pages_per_part"]:
+        split_strategy = TranslationConfig.create_max_pages_per_part_split_strategy(
+            config["max_pages_per_part"]
+        )
+
+    total_term_extraction_total_tokens = 0
+    total_term_extraction_prompt_tokens = 0
+    total_term_extraction_completion_tokens = 0
+    total_term_extraction_cache_hit_prompt_tokens = 0
+
+    pending_files = []
+    for file in config["files"]:
+        pending_files.append(file)
+        
+    for file in pending_files:
+        # 清理文件路径，去除两端的引号
+        file = file.strip("\"'")
+        # 创建配置对象
+        config = TranslationConfig(
+            input_file=file,
+            font=None,
+            pages=args.pages,
+            output_dir=args.output,
+            translator=translator,
+            term_extraction_translator=term_extraction_translator,
+            debug=args.debug,
+            lang_in=args.lang_in,
+            lang_out=args.lang_out,
+            no_dual=args.no_dual,
+            no_mono=args.no_mono,
+            qps=args.qps,
+            formular_font_pattern=args.formular_font_pattern,
+            formular_char_pattern=args.formular_char_pattern,
+            split_short_lines=args.split_short_lines,
+            short_line_split_factor=args.short_line_split_factor,
+            doc_layout_model=doc_layout_model,
+            skip_clean=args.skip_clean,
+            dual_translate_first=args.dual_translate_first,
+            disable_rich_text_translate=args.disable_rich_text_translate,
+            enhance_compatibility=args.enhance_compatibility,
+            use_alternating_pages_dual=args.use_alternating_pages_dual,
+            report_interval=args.report_interval,
+            min_text_length=args.min_text_length,
+            watermark_output_mode=watermark_output_mode,
+            split_strategy=split_strategy,
+            table_model=table_model,
+            show_char_box=args.show_char_box,
+            skip_scanned_detection=args.skip_scanned_detection,
+            ocr_workaround=args.ocr_workaround,
+            custom_system_prompt=args.custom_system_prompt,
+            working_dir=working_dir,
+            add_formula_placehold_hint=args.add_formula_placehold_hint,
+            disable_same_text_fallback=args.disable_same_text_fallback,
+            glossaries=loaded_glossaries,
+            pool_max_workers=args.pool_max_workers,
+            auto_extract_glossary=args.auto_extract_glossary,
+            auto_enable_ocr_workaround=args.auto_enable_ocr_workaround,
+            primary_font_family=args.primary_font_family,
+            only_include_translated_page=args.only_include_translated_page,
+            save_auto_extracted_glossary=args.save_auto_extracted_glossary,
+            enable_graphic_element_process=not args.disable_graphic_element_process,
+            merge_alternating_line_numbers=args.merge_alternating_line_numbers,
+            skip_translation=args.skip_translation,
+            skip_form_render=args.skip_form_render,
+            skip_curve_render=args.skip_curve_render,
+            only_parse_generate_pdf=args.only_parse_generate_pdf,
+            remove_non_formula_lines=args.remove_non_formula_lines,
+            non_formula_line_iou_threshold=args.non_formula_line_iou_threshold,
+            figure_table_protection_threshold=args.figure_table_protection_threshold,
+            skip_formula_offset_calculation=args.skip_formula_offset_calculation,
+            metadata_extra_data=args.metadata_extra_data,
+            term_pool_max_workers=args.term_pool_max_workers,
+        )
+
+    #     def nop(_x):
+    #         pass
+    #     # NOTE：字体映射逻辑是？
+    #     getattr(doc_layout_model, "init_font_mapper", nop)(config)
+    #     # Create progress handler
+    #     progress_context, progress_handler = create_progress_handler(
+    #         config, show_log=False
+    #     )
+
+    #     # 开始翻译
+    #     with progress_context:
+    #         async for event in babeldoc.format.pdf.high_level.async_translate(config):
+    #             progress_handler(event)
+    #             if config.debug:
+    #                 logger.debug(event)
+    #             if event["type"] == "error":
+    #                 logger.error(f"Error: {event['error']}")
+    #                 break
+    #             if event["type"] == "finish":
+    #                 result = event["translate_result"]
+    #                 logger.info(str(result))
+    #                 break
+    #     usage = config.term_extraction_token_usage
+    #     total_term_extraction_total_tokens += usage["total_tokens"]
+    #     total_term_extraction_prompt_tokens += usage["prompt_tokens"]
+    #     total_term_extraction_completion_tokens += usage["completion_tokens"]
+    #     total_term_extraction_cache_hit_prompt_tokens += usage[
+    #         "cache_hit_prompt_tokens"
+    #     ]
+    # logger.info(f"Total tokens: {translator.token_count.value}")
+    # logger.info(f"Prompt tokens: {translator.prompt_token_count.value}")
+    # logger.info(f"Completion tokens: {translator.completion_token_count.value}")
+    # logger.info(
+    #     f"Cache hit prompt tokens: {translator.cache_hit_prompt_token_count.value}"
+    # )
+    # logger.info(
+    #     "Term extraction tokens: total=%s prompt=%s completion=%s cache_hit_prompt=%s",
+    #     total_term_extraction_total_tokens,
+    #     total_term_extraction_prompt_tokens,
+    #     total_term_extraction_completion_tokens,
+    #     total_term_extraction_cache_hit_prompt_tokens,
+    # )
+    # if term_extraction_translator is not translator:
+    #     logger.info(
+    #         "Term extraction translator raw tokens: total=%s prompt=%s completion=%s cache_hit_prompt=%s",
+    #         term_extraction_translator.token_count.value,
+    #         term_extraction_translator.prompt_token_count.value,
+    #         term_extraction_translator.completion_token_count.value,
+    #         term_extraction_translator.cache_hit_prompt_token_count.value,
+    #     )
+
+
 if __name__ == "__main__":
     if sys.platform == "darwin" or sys.platform == "win32":
         mp.set_start_method("spawn")

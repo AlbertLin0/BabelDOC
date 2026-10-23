@@ -338,6 +338,10 @@ async def async_translate(translation_config: TranslationConfig):
         "type": "error",
         "error": str
     }
+    - detected Scanned File: {
+        "type": "detected Scanned File",
+        "input_file": str          # Path to the input PDF
+    }
 
     Args:
         translation_config: Configuration for the translation process
@@ -553,6 +557,8 @@ def do_translate(
             # Check if split translation is enabled
             if not translation_config.split_strategy:
                 result = _do_translate_single(pm, translation_config)
+                if result is None:
+                    return None
             else:
                 # Initialize split manager and determine split points
                 split_manager = SplitManager(translation_config)
@@ -563,12 +569,16 @@ def do_translate(
                         "No split points determined, falling back to single translation"
                     )
                     result = _do_translate_single(pm, translation_config)
+                    if result is None:
+                        return None
                 else:
                     logger.info(f"Split points determined: {len(split_points)} parts")
 
                     if len(split_points) == 1:
                         logger.info("Only one part, use single translation")
                         result = _do_translate_single(pm, translation_config)
+                        if result is None:
+                            return None
                     else:
                         pm.total_parts = len(split_points)
 
@@ -668,6 +678,10 @@ def do_translate(
                                     part_config,
                                 )
                                 results[i] = result
+                                if result is None:
+                                    break
+                                if result is None:
+                                    break
 
                             except Exception as e:
                                 logger.error(f"Error in part {i}: {e}")
@@ -683,6 +697,8 @@ def do_translate(
                         )
 
                         # Merge results
+                        if any(r is None for r in results.values()):
+                            return None
                         merger = ResultMerger(translation_config)
                         logger.info("start merge results")
                         result = merger.merge_results(results)
@@ -843,7 +859,7 @@ def check_cid_char(il: il_version_1.Document):
 def _do_translate_single(
     pm: ProgressMonitor,
     translation_config: TranslationConfig,
-) -> TranslateResult:
+) -> TranslateResult | None:
     """Original translation logic for a single document or part"""
     translation_config.progress_monitor = pm
 
@@ -948,9 +964,17 @@ def _do_translate_single(
         logger.debug("skipping scanned file detection")
     else:
         logger.debug("start detect scanned file")
-        DetectScannedFile(translation_config).process(
+        is_scanned = DetectScannedFile(translation_config).process(
             docs, temp_pdf_path, mediabox_data
         )
+        if is_scanned is True:
+            logger.debug("Detected scanned file, turning on OCR workaround.")
+            if pm.finish_callback:
+                pm.finish_callback(
+                    type="detected Scanned File",
+                    input_file=translation_config.input_file,
+                )
+            return None
         logger.debug("finish detect scanned file")
         if translation_config.debug:
             xml_converter.write_json(

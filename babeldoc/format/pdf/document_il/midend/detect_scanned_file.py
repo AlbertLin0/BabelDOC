@@ -83,7 +83,7 @@ class DetectScannedFile:
 
     def process(
         self, docs: il_version_1.Document, original_pdf_path, mediabox_data: dict
-    ):
+    ) -> bool | None:
         """Generate layouts for all pages that need to be translated."""
         # Get pages that need to be translated
 
@@ -100,7 +100,7 @@ class DetectScannedFile:
             return
         mupdf = pymupdf.open(self.translation_config.get_working_file_path("input.pdf"))
         total = len(pages_to_translate)
-        threshold = 0.8 * total
+        threshold = 0.5 * total
         threshold = max(threshold, 1)
         scanned = 0
         non_scanned = 0
@@ -110,7 +110,7 @@ class DetectScannedFile:
             total,
         ) as progress:
             for page in pages_to_translate:
-                if scanned < threshold and non_scanned < non_scanned_threshold:
+                if scanned < threshold:
                     # Only continue detection if both counts are below thresholds
                     # 使用 pdf_creater 比较去除文字层后的两个PDF相似度，判断是否为扫描件
                     is_scanned = self.detect_page_is_scanned(page, mupdf, pdf_creater)
@@ -120,27 +120,30 @@ class DetectScannedFile:
                         non_scanned += 1
                 else:
                     # We have enough information to determine document type
-                    non_scanned += 1
+                    pass
                 progress.advance(1)
 
         if scanned >= threshold:
-            if self.translation_config.auto_enable_ocr_workaround:
-                logger.warning(
-                    f"Detected {scanned} scanned pages, which is more than 80% of the total pages. "
-                    "Turning on OCR workaround.",
-                )
-                self.translation_config.shared_context_cross_split_part.auto_enabled_ocr_workaround = True
-                self.translation_config.ocr_workaround = True
-                self.translation_config.skip_scanned_detection = True
-                self.translation_config.disable_rich_text_translate = True
-                self.clean_render_order_for_chars(docs)
-                self.translation_config.remove_non_formula_lines = False
-            else:
-                logger.warning(
-                    f"Detected {scanned} scanned pages, which is more than 80% of the total pages. "
-                    "Please check the input PDF file.",
-                )
-                raise ScannedPDFError("Scanned PDF detected.")
+            return True
+            # if self.translation_config.auto_enable_ocr_workaround:
+            #     logger.warning(
+            #         f"Detected {scanned} scanned pages, which is more than 80% of the total pages. "
+            #         "Turning on OCR workaround.",
+            #     )
+            #     self.translation_config.shared_context_cross_split_part.auto_enabled_ocr_workaround = True
+            #     self.translation_config.ocr_workaround = True
+            #     self.translation_config.skip_scanned_detection = True
+            #     self.translation_config.disable_rich_text_translate = True
+            #     self.clean_render_order_for_chars(docs)
+            #     self.translation_config.remove_non_formula_lines = False
+            #     return True
+            # else:
+            #     logger.warning(
+            #         f"Detected {scanned} scanned pages, which is more than 80% of the total pages. "
+            #         "Please check the input PDF file.",
+            #     )
+            #     raise ScannedPDFError("Scanned PDF detected.")
+        return False
 
     def clean_render_order_for_chars(self, docs: il_version_1.Document):
         for page in docs.page:

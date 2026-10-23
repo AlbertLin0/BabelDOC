@@ -160,10 +160,10 @@ class TranslationConfig:
     def __init__(
         self,
         translator: BaseTranslator,
-        input_file: str | Path,
-        lang_in: str,
-        lang_out: str,
         doc_layout_model,  # DocLayoutModel
+        input_file: str | Path | None = None,
+        lang_in: str | None = None,
+        lang_out: str | None = None,
         # for backward compatibility
         font: str | Path | None = None,
         pages: str | None = None,
