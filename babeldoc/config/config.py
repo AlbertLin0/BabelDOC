@@ -28,6 +28,14 @@ class Config:
         self.ES_OUTPUT = self._raw["ES_OUTPUT"]
         self.BSKEY = self._raw["BSKEY"]
         self.SAPKEY = self._raw["SAPKEY"]
+        self.IS_INPUT = self._raw["IS_INPUT"]
+        self.SYSID = self._raw["SYSID"]
+        self.ZORG = self._raw["ZORG"]
+        self.callback_url = self._raw.get("callback_url")
+
+        # timeout 
+        self.task_timeout = self._raw["task_timeout"]
+        self.callback_timeout = self._raw["callback_timeout"]
 
     @classmethod
     def get_instance(cls) -> "Config":

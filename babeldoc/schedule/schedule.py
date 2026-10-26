@@ -4,8 +4,10 @@ import uuid
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional
-
 from schemas.api.po import PoInputRequest
+
+from config.config import get_config
+config = get_config()
 
 
 class TaskStatus(str, Enum):
@@ -42,9 +44,10 @@ class Task:
     async def wait(self, timeout: Optional[float] = None) -> bool:
         """等待任务处理完成"""
         try:
-            await asyncio.wait_for(self._event.wait(), timeout=timeout)
+            await asyncio.wait_for(self._event.wait(), timeout=config.task_timeout)
             return True
         except asyncio.TimeoutError:
+            # raise asyncio.TimeoutError
             return False
 
     def to_dict(self) -> Dict[str, Any]:
@@ -68,6 +71,7 @@ class Schedule:
     def __init__(self) -> None:
         self._pending: List[Task] = []
         self._processing: Dict[str, Task] = {}
+        # TODO: 定时清理任务
         self._completed: Dict[str, Task] = {}
         self._lock = asyncio.Lock()
 

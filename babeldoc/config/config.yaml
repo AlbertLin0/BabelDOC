@@ -265,3 +265,12 @@ mineru_base_url: "http://10.16.6.191:8001"
 ES_OUTPUT: "ES_OUTPUT"
 BSKEY: "BSKEY"
 SAPKEY: "SAPKEY"
+IS_INPUT: "IS_INPUT"
+SYSID: "JWQT"
+ZORG: "ZORG"
+# 翻译完成后的回调地址（null 表示不回调）
+callback_url: null
+
+# timeout 
+task_timeout: 300.0
+callback_timeout: 30.0
