@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, Field
 from schemas.api.po import PoInputRequest, ZDataPayload, ZDataResponse, PoOutputResponse, PoResponseFlag, PoReturnRequest
+from schemas.api.po import PoInputRequestDescription, PoReturnRequestDescription, PoOutputResponseDescription
 from schemas.api.po_execptions import PoApiException, PoValidationError, PoBusinessError, PoErrorCode
 from schedule.schedule import Schedule, TaskStatus, Task
 
@@ -24,9 +25,9 @@ CONCURRENCY_LIMIT = getattr(config, "concurrency_limit", 5)
 _semaphore = asyncio.Semaphore(CONCURRENCY_LIMIT)
 
 
-async def process_translation(request: PoInputRequest) -> PoReturnRequest:
+async def process_translation(request: PoInputRequest) -> PoReturnRequestDescription:
     """翻译任务处理逻辑（占位实现，后续接入真实翻译流程）"""
-    zdata = ZDataPayload.model_validate(request.ZDATA)
+    zdata = request.ZDATA  # ZDataInput
     # 翻译接口路由
     if zdata.PICTURE is not None:
         # 图片翻译
@@ -38,7 +39,7 @@ async def process_translation(request: PoInputRequest) -> PoReturnRequest:
         response = ZDataPayload(
             JOBID=zdata.JOBID,
             CODE=PoResponseFlag.S.value,
-            MESSAGE=zdata.MESSAGE,
+            MESSAGE=None,
             TEXT=zdata.TEXT,
             PICTURE=zdata.PICTURE,
             FILE_ID=new_FILE_ID,
@@ -61,7 +62,7 @@ async def process_translation(request: PoInputRequest) -> PoReturnRequest:
         response = ZDataPayload(
             JOBID=zdata.JOBID,
             CODE=PoResponseFlag.S.value,
-            MESSAGE=zdata.MESSAGE,
+            MESSAGE=None,
             TEXT=zdata.TEXT,
             PICTURE=zdata.PICTURE,
             FILE_ID=new_FILE_ID,
@@ -77,20 +78,23 @@ async def process_translation(request: PoInputRequest) -> PoReturnRequest:
     else:
         raise PoValidationError(message="TEXT、PICTURE、FILE_ID 三者之一不能为空")
 
-    return PoReturnRequest(
-        IS_INPUT=config.IS_INPUT,
-        SYSID=config.SYSID,
-        IFYWID=request.IFYWID,
-        BSKEY=config.BSKEY,
-        SAPKEY=config.SAPKEY,
-        ZORG=config.ZORG,
-        ZFILED1=request.ZFILED1,
-        ZFILED2=request.ZFILED2,
-        ZFILED3=request.ZFILED3,
-        ZFILED4=request.ZFILED4,
-        ZFILED5=request.ZFILED5,
-        ZDATA=response,
+    return PoReturnRequestDescription(
+        IS_INPUT=PoReturnRequest(
+            SYSID=config.SYSID,
+            IFYWID=request.IFYWID,
+            BSKEY=config.BSKEY,
+            SAPKEY=config.SAPKEY,
+            ZORG=config.ZORG,
+            ZFILED1=request.ZFILED1,
+            ZFILED2=request.ZFILED2,
+            ZFILED3=request.ZFILED3,
+            ZFILED4=request.ZFILED4,
+            ZFILED5=request.ZFILED5,
+            ZDATA=response,
+        )
     )
+
+
 
 async def verify_IFYWID(IFYWID: str) -> str:
     """从任务中提取 IFYWID"""
@@ -170,32 +174,32 @@ async def on_startup() -> None:
 
 @app.exception_handler(PoApiException)
 async def po_exception_handler(
-    request: PoInputRequest, 
+    request: Request,
     exc: PoApiException
 ) -> JSONResponse:
     logger.error(f"PO 接口异常捕获: Code={exc.code}, Message={exc.message}, JobID={exc.job_id}")
-    
+
     job_id = exc.job_id
     if not job_id:
         # if exception occurs before parsing JobID, use empty string as JobID
         job_id = ""
 
     zdata_response = ZDataResponse(
-        JOBID=job_id, 
+        JOBID=job_id,
         CODE=exc.code.value,
         MESSAGE=exc.message
     )
 
-    po_response = PoOutputResponse(
-        ES_OUTPUT = config.ES_OUTPUT, 
-        BSKEY = config.BSKEY,
-        SAPKEY = config.SAPKEY,
-        ZTYPE = "E",
-        ZMESSAGE = "",
-        ZDATA = zdata_response
+    po_response = PoOutputResponseDescription(
+        ES_OUTPUT=PoOutputResponse(
+            BSKEY=config.BSKEY,
+            SAPKEY=config.SAPKEY,
+            ZTYPE="E",
+            ZMESSAGE="",
+            ZDATA=zdata_response,
+        )
     )
 
-    # serialize po_response to JSON string. Need test this
     return JSONResponse(content=jsonable_encoder(po_response))
 
 @app.exception_handler(Exception)
@@ -207,13 +211,14 @@ async def global_exception_handler(
 
     logger.error(f"系统全局异常捕获: {exc}")
 
-    return JSONResponse(content=jsonable_encoder(PoOutputResponse(
-        ES_OUTPUT = config.ES_OUTPUT, 
-        BSKEY = config.BSKEY,
-        SAPKEY = config.SAPKEY,
-        ZTYPE = "E",
-        ZMESSAGE = "",
-        ZDATA = ZDataResponse(JOBID="", CODE="E_SYS_999", MESSAGE=str(exc))
+    return JSONResponse(content=jsonable_encoder(PoOutputResponseDescription(
+        ES_OUTPUT=PoOutputResponse(
+            BSKEY=config.BSKEY,
+            SAPKEY=config.SAPKEY,
+            ZTYPE="E",
+            ZMESSAGE="",
+            ZDATA=ZDataResponse(JOBID="", CODE="E_SYS_999", MESSAGE=str(exc)),
+        )
     )))
 
 
@@ -224,22 +229,22 @@ class MoveTaskRequest(BaseModel):
 
 @app.post("/po/translate")
 async def get_translate_result(
-    request: PoInputRequest
+    request: PoInputRequestDescription
 ) -> JSONResponse:
     """提交翻译任务到队列，立即返回任务标识，完成后回调通知"""
     logger.debug("收到翻译请求: ")
     logger.debug(json.dumps(request.model_dump(), ensure_ascii=False))
 
     # 校验翻译类型字段（TEXT / PICTURE / FILE_ID 三选一）
-    zdata = request.ZDATA
+    zdata = request.IS_INPUT.ZDATA
     if not (zdata.TEXT is not None or zdata.PICTURE is not None or zdata.FILE_ID is not None):
         raise PoValidationError(
             message="TEXT、PICTURE、FILE_ID 三者之一不能为空",
             job_id=zdata.JOBID,
         )
     # 校验 IFYWID
-    response_IFYWID = await verify_IFYWID(request.IFYWID)
-    request.IFYWID = response_IFYWID
+    response_IFYWID = await verify_IFYWID(request.IS_INPUT.IFYWID)
+    request.IS_INPUT.IFYWID = response_IFYWID
 
     if zdata.TEXT is not None:
         # 文本翻译
@@ -253,24 +258,25 @@ async def get_translate_result(
 
     # 提交任务到队列
     else:
-        task = await schedule.submit(request)
+        task = await schedule.submit(request.IS_INPUT)
         logger.info(f"任务已入队: task_id={task.task_id}, job_id={task.job_id}")
 
         # 立即返回任务标识，不等待翻译完成
         response = ZDataResponse(
-            JOBID=zdata.JOBID,
+            JOBID=request.IS_INPUT.ZDATA.JOBID,
             CODE=PoErrorCode.SUCCESS.value,
             MESSAGE=f"任务已提交，task_id={task.task_id}",
         )
     return JSONResponse(
         content=jsonable_encoder(
-            PoOutputResponse(
-                ES_OUTPUT=config.ES_OUTPUT,
-                BSKEY=request.BSKEY,
-                SAPKEY=request.SAPKEY,
-                ZTYPE="S",
-                ZMESSAGE="",
-                ZDATA=response,
+            PoOutputResponseDescription(
+                ES_OUTPUT=PoOutputResponse(
+                    BSKEY=request.IS_INPUT.BSKEY,
+                    SAPKEY=request.IS_INPUT.SAPKEY,
+                    ZTYPE="S",
+                    ZMESSAGE="",
+                    ZDATA=response,
+                )
             )
         )
     )
@@ -374,4 +380,4 @@ async def cancel_task(task_id: str) -> JSONResponse:
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8086)
+    uvicorn.run(app, host="0.0.0.0", port=38001)
