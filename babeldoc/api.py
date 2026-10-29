@@ -263,13 +263,15 @@ async def get_translate_result(
             MESSAGE=f"任务已提交，task_id={task.task_id}",
         )
     return JSONResponse(
-        PoOutputResponse(
-            ES_OUTPUT=config.ES_OUTPUT,
-            BSKEY=config.BSKEY,
-            SAPKEY=config.SAPKEY,
-            ZTYPE="S",
-            ZMESSAGE="",
-            ZDATA=response,
+        content=jsonable_encoder(
+            PoOutputResponse(
+                ES_OUTPUT=config.ES_OUTPUT,
+                BSKEY=config.BSKEY,
+                SAPKEY=config.SAPKEY,
+                ZTYPE="S",
+                ZMESSAGE="",
+                ZDATA=response,
+            )
         )
     )
 
