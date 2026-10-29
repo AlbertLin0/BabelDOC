@@ -5,7 +5,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, Field
-from schemas.api.po import PoInputRequest, ZDataPayload, ZDataResponse, PoOutputResponse, PoResponseFlag
+from schemas.api.po import PoInputRequest, ZDataPayload, ZDataResponse, PoOutputResponse, PoResponseFlag, PoReturnRequest
 from schemas.api.po_execptions import PoApiException, PoValidationError, PoBusinessError, PoErrorCode
 from schedule.schedule import Schedule, TaskStatus, Task
 
@@ -24,7 +24,7 @@ CONCURRENCY_LIMIT = getattr(config, "concurrency_limit", 5)
 _semaphore = asyncio.Semaphore(CONCURRENCY_LIMIT)
 
 
-async def process_translation(request: PoInputRequest) -> PoInputRequest:
+async def process_translation(request: PoInputRequest) -> PoReturnRequest:
     """翻译任务处理逻辑（占位实现，后续接入真实翻译流程）"""
     zdata = ZDataPayload.model_validate(request.ZDATA)
     # 翻译接口路由
@@ -77,7 +77,7 @@ async def process_translation(request: PoInputRequest) -> PoInputRequest:
     else:
         raise PoValidationError(message="TEXT、PICTURE、FILE_ID 三者之一不能为空")
 
-    return PoInputRequest(
+    return PoReturnRequest(
         IS_INPUT=config.IS_INPUT,
         SYSID=config.SYSID,
         IFYWID=request.IFYWID,
@@ -369,3 +369,7 @@ async def cancel_task(task_id: str) -> JSONResponse:
         "job_id": task.job_id,
         "status": task.status.value,
     })
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8086)
