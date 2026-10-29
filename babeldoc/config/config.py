@@ -33,6 +33,12 @@ class Config:
         self.ZORG = self._raw["ZORG"]
         self.callback_url = self._raw.get("callback_url")
 
+        # 文件系统
+        self.file_url = self._raw["file_url"]
+        self.USERNAME = self._raw["USERNAME"]
+        self.PASSWORD = self._raw["PASSWORD"]
+        self.msgType_SUCCESS = self._raw["msgType_SUCCESS"]
+
         # timeout 
         self.task_timeout = self._raw["task_timeout"]
         self.callback_timeout = self._raw["callback_timeout"]

@@ -271,6 +271,13 @@ ZORG: "ZORG"
 # 翻译完成后的回调地址（null 表示不回调）
 callback_url: null
 
+# 文件系统
+file_url: ""
+USERNAME: "YNewAPi@2026#A"
+PASSWORD: "YNewAPi@2026#A"
+msgType_SUCCESS: "S"
+
+
 # timeout 
 task_timeout: 300.0
 callback_timeout: 30.0

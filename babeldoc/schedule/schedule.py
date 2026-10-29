@@ -1,10 +1,13 @@
 import asyncio
 import time
 import uuid
+import logging
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional
 from schemas.api.po import PoInputRequest
+
+logger = logging.getLogger(__name__)
 
 from config.config import get_config
 config = get_config()
@@ -31,7 +34,15 @@ class Task:
     completed_at: Optional[float] = None
     result: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
+    cancelled: bool = False
     _event: asyncio.Event = field(default_factory=asyncio.Event, repr=False)
+    _asyncio_task: Optional[asyncio.Task] = field(default=None, repr=False)
+
+    def cancel(self) -> None:
+        """标记任务为已取消，并尝试中断正在执行的 asyncio 任务"""
+        self.cancelled = True
+        if self._asyncio_task is not None and not self._asyncio_task.done():
+            self._asyncio_task.cancel()
 
     @property
     def job_id(self) -> str:
@@ -85,7 +96,8 @@ class Schedule:
         """提交任务到队列末尾"""
         async with self._lock:
             task = Task(task_id=str(uuid.uuid4()), request=request)
-            self._pending.append(task)
+            # self._pending.append(task)
+            pass
             return task
 
     async def get_next(self) -> Optional[Task]:
@@ -124,6 +136,30 @@ class Schedule:
             self._pending.remove(task)
             task._event.set()
             return task
+
+    async def cancel(self, task_id: str) -> Task:
+        """取消任务：等待中的直接移除，执行中的尝试中断"""
+        async with self._lock:
+            # 1. 等待队列中的任务：直接移除
+            for i, task in enumerate(self._pending):
+                if task.task_id == task_id:
+                    self._pending.pop(i)
+                    task.cancelled = True
+                    task.status = TaskStatus.FAILED
+                    task.error = "任务已取消"
+                    task._event.set()
+                    logger.info(f"已取消等待中的任务: task_id={task_id}")
+                    return task
+            # 2. 正在执行的任务：设置标志并中断 asyncio 任务
+            task = self._processing.get(task_id)
+            if task is not None:
+                task.cancel()
+                logger.info(f"正在取消执行中的任务: task_id={task_id}")
+                return task
+            # 3. 已完成的任务
+            if task_id in self._completed:
+                raise ValueError(f"任务 {task_id} 已完成，无法取消")
+            raise ValueError(f"任务 {task_id} 不存在")
 
     async def complete(self, task_id: str, result: Optional[Dict[str, Any]] = None) -> None:
         """标记任务为已完成"""

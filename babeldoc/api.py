@@ -19,31 +19,16 @@ config = get_config()
 # 调度器单例
 schedule = Schedule.get_instance()
 
+# 并发控制：同一时刻最多同时处理的翻译任务数
+CONCURRENCY_LIMIT = getattr(config, "concurrency_limit", 5)
+_semaphore = asyncio.Semaphore(CONCURRENCY_LIMIT)
+
 
 async def process_translation(request: PoInputRequest) -> PoInputRequest:
     """翻译任务处理逻辑（占位实现，后续接入真实翻译流程）"""
     zdata = ZDataPayload.model_validate(request.ZDATA)
     # 翻译接口路由
-    if zdata.TEXT is not None:
-        # 文本翻译
-        translated_text = zdata.TEXT  # TODO: 接入真实文本翻译
-        response = ZDataPayload(
-            JOBID=zdata.JOBID,
-            CODE=PoResponseFlag.S.value,
-            MESSAGE=zdata.MESSAGE,
-            TEXT=translated_text,
-            PICTURE=zdata.PICTURE,
-            FILE_ID=zdata.FILE_ID,
-            FILE_NAME=zdata.FILE_NAME,
-            FILE_ARCID=zdata.FILE_ARCID,
-            FILE_DOCID=zdata.FILE_DOCID,
-            ZEXTRA1=zdata.ZEXTRA1,
-            ZEXTRA2=zdata.ZEXTRA2,
-            ZEXTRA3=zdata.ZEXTRA3,
-            ZEXTRA4=zdata.ZEXTRA4,
-            ZEXTRA5=zdata.ZEXTRA5,
-        )
-    elif zdata.PICTURE is not None:
+    if zdata.PICTURE is not None:
         # 图片翻译
         new_FILE_ID = "FI23456"
         new_FILE_NAME = f"{zdata.FILE_NAME}_translated.png"
@@ -130,30 +115,49 @@ async def notify_callback(callback_url: str, task_id: str, result: dict) -> None
         logger.error(f"回调通知失败 task_id={task_id}, error={e}")
 
 
+async def _handle_task(task: Task) -> None:
+    """后台协程：处理单个翻译任务的完整生命周期（完成 / 失败 / 回调）"""
+    try:
+        logger.info(f"开始处理任务: task_id={task.task_id}, job_id={task.job_id}")
+        result = await process_translation(task.request)
+        await schedule.complete(task.task_id, jsonable_encoder(result))
+        logger.info(f"任务处理完成: task_id={task.task_id}")
+        if config.callback_url:
+            await notify_callback(
+                config.callback_url,
+                task.task_id,
+                jsonable_encoder(result),
+            )
+    except asyncio.CancelledError:
+        logger.info(f"任务被取消: task_id={task.task_id}")
+        await schedule.fail(task.task_id, "任务已取消")
+        if config.callback_url:
+            await notify_callback(
+                config.callback_url,
+                task.task_id,
+                {"error": "任务已取消", "task_id": task.task_id},
+            )
+    except Exception as e:
+        logger.error(f"任务处理失败: task_id={task.task_id}, error={e}")
+        await schedule.fail(task.task_id, str(e))
+    finally:
+        # 释放信号量，允许下一个任务开始
+        _semaphore.release()
+
+
 async def worker_loop() -> None:
-    """后台 Worker：不断从队列头部取任务并执行翻译"""
-    logger.info("翻译任务 Worker 已启动")
+    """后台 Worker：不断从队列头部取任务并并发执行翻译"""
+    logger.info(f"翻译任务 Worker 已启动，最大并发数: {CONCURRENCY_LIMIT}")
     while True:
         task = await schedule.get_next()
         if task is None:
             await asyncio.sleep(0.2)
             continue
-        try:
-            logger.info(f"开始处理任务: task_id={task.task_id}, job_id={task.job_id}")
-            result = await process_translation(task.request)
-            await schedule.complete(task.task_id, jsonable_encoder(result))
-            logger.info(f"任务处理完成: task_id={task.task_id}")
-            # 翻译完成后推送回调
-
-            if config.callback_url:
-                await notify_callback(
-                    config.callback_url,
-                    task.task_id,
-                    jsonable_encoder(result),
-                )
-        except Exception as e:
-            logger.error(f"任务处理失败: task_id={task.task_id}, error={e}")
-            await schedule.fail(task.task_id, str(e))
+        # 限流：达到并发上限时阻塞，直到有任务完成释放名额
+        await _semaphore.acquire()
+        # 将翻译任务包装为 asyncio.Task，以便外部取消；不 await，让主循环继续取下一个任务
+        asyncio_task = asyncio.create_task(_handle_task(task))
+        task._asyncio_task = asyncio_task
 
 
 app = FastAPI(title="数科调度翻译服务")
@@ -237,16 +241,27 @@ async def get_translate_result(
     response_IFYWID = await verify_IFYWID(request.IFYWID)
     request.IFYWID = response_IFYWID
 
-    # 提交任务到队列
-    task = await schedule.submit(request)
-    logger.info(f"任务已入队: task_id={task.task_id}, job_id={task.job_id}")
+    if zdata.TEXT is not None:
+        # 文本翻译
+        translated_text = zdata.TEXT  # TODO: 接入真实文本翻译
+        response = ZDataResponse(
+            JOBID=zdata.JOBID,
+            CODE=PoErrorCode.SUCCESS.value,
+            MESSAGE=f"直接返回翻译结果",
+            TEXT=translated_text,
+        )
 
-    # 立即返回任务标识，不等待翻译完成
-    response = ZDataResponse(
-        JOBID=zdata.JOBID,
-        CODE=PoErrorCode.SUCCESS.value,
-        MESSAGE=f"任务已提交，task_id={task.task_id}",
-    )
+    # 提交任务到队列
+    else:
+        task = await schedule.submit(request)
+        logger.info(f"任务已入队: task_id={task.task_id}, job_id={task.job_id}")
+
+        # 立即返回任务标识，不等待翻译完成
+        response = ZDataResponse(
+            JOBID=zdata.JOBID,
+            CODE=PoErrorCode.SUCCESS.value,
+            MESSAGE=f"任务已提交，task_id={task.task_id}",
+        )
     return JSONResponse(
         PoOutputResponse(
             ES_OUTPUT=config.ES_OUTPUT,
@@ -329,7 +344,7 @@ async def move_task_to_back(task_id: str) -> JSONResponse:
 
 @app.delete("/po/queue/{task_id}")
 async def remove_task(task_id: str) -> JSONResponse:
-    """从队列中移除任务"""
+    """从队列中移除任务（仅等待中的任务）"""
     try:
         task = await schedule.remove(task_id)
     except ValueError as e:
@@ -338,4 +353,19 @@ async def remove_task(task_id: str) -> JSONResponse:
         "message": "任务已从队列移除",
         "task_id": task.task_id,
         "job_id": task.job_id,
+    })
+
+
+@app.post("/po/queue/{task_id}/cancel")
+async def cancel_task(task_id: str) -> JSONResponse:
+    """取消任务：等待中的直接移除，执行中的尝试中断"""
+    try:
+        task = await schedule.cancel(task_id)
+    except ValueError as e:
+        raise PoBusinessError(message=str(e))
+    return JSONResponse(content={
+        "message": f"任务 {task_id} 已取消",
+        "task_id": task.task_id,
+        "job_id": task.job_id,
+        "status": task.status.value,
     })

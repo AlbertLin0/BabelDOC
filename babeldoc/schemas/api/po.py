@@ -48,6 +48,7 @@ class ZDataResponse(BaseModel):
     JOBID: str = Field(..., description="任务ID UUID")
     CODE: str = Field(..., description="错误码")
     MESSAGE: Optional[str] = Field(None, description="处理消息文本")
+    TEXT: Optional[str|None] = Field(default=None, description="文本，与PICTURE字段互斥")
 
 class PoOutputResponse(BaseModel):
     ES_OUTPUT: str = Field(..., description="固定值：ES_OUTPUT") # 字段类型？
@@ -56,4 +57,6 @@ class PoOutputResponse(BaseModel):
     ZTYPE: Literal["S", "E"] = Field(..., description="处理消息标识(S：成功，E：失败)")
     ZMESSAGE: str = Field(..., description="处理消息文本")
     ZDATA: ZDataResponse = Field(..., description="返回业务数据JSON串")
+
+
 
