@@ -92,9 +92,9 @@ class ZDataResponse(BaseModel):
 class PoOutputResponse(BaseModel):
     ES_OUTPUT: str = Field(..., description="固定值：ES_OUTPUT") # 字段类型？
     BSKEY: str = Field(..., description="外围系统数据唯一标识")
-    SAPKEY: str = Field(..., description="SAP数据唯一标识")
+    SAPKEY: Optional[str] = Field(None, description="SAP数据唯一标识")
     ZTYPE: Literal["S", "E"] = Field(..., description="处理消息标识(S：成功，E：失败)")
-    ZMESSAGE: str = Field(..., description="处理消息文本")
+    ZMESSAGE: Optional[str] = Field(None, description="处理消息文本")
     ZDATA: ZDataResponse = Field(..., description="返回业务数据JSON串")
 
 

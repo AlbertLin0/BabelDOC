@@ -266,8 +266,8 @@ async def get_translate_result(
         content=jsonable_encoder(
             PoOutputResponse(
                 ES_OUTPUT=config.ES_OUTPUT,
-                BSKEY=config.BSKEY,
-                SAPKEY=config.SAPKEY,
+                BSKEY=request.BSKEY,
+                SAPKEY=request.SAPKEY,
                 ZTYPE="S",
                 ZMESSAGE="",
                 ZDATA=response,
