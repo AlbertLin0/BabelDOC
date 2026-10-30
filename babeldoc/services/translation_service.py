@@ -1,3 +1,5 @@
+import random
+import string
 from schemas.api.po import (
     PoInputRequest,
     PoReturnRequest,
@@ -7,19 +9,13 @@ from schemas.api.po import (
 )
 from schemas.api.po_execptions import PoValidationError
 from app_devs import config
+from config.config import verify_patch
+
+def random_str_generate(length: int = 10) -> str:
+    """生成随机字符串"""
+    return "".join(random.choices(string.ascii_letters + string.digits, k=length))
 
 
-async def verify_IFYWID(IFYWID: str) -> str:
-    """从任务中提取 IFYWID"""
-    if IFYWID == "FI1301":
-        res = "FI1300"
-    elif IFYWID == "FI1299":
-        res = "FI1298"
-    elif IFYWID == "FI1297":
-        res = "FI1296"
-    else:
-        raise PoValidationError(message=f"未知 IFYYWID: {IFYWID}")
-    return res
 
 async def process_translation(request: PoInputRequest) -> PoReturnRequestDescription:
     """翻译任务处理逻辑（占位实现，后续接入真实翻译流程）"""
@@ -53,18 +49,19 @@ async def process_translation(request: PoInputRequest) -> PoReturnRequestDescrip
         ZEXTRA4=zdata.ZEXTRA4,
         ZEXTRA5=zdata.ZEXTRA5,
     )
+    _SYSID, _ZFILED5 = verify_patch(request.SYSID)
     return PoReturnRequestDescription(
         IS_INPUT=PoReturnRequest(
-            SYSID=config.SYSID,
+            SYSID=_SYSID,
             IFYWID=request.IFYWID,
-            BSKEY=config.BSKEY,
-            SAPKEY=config.SAPKEY,
-            ZORG=config.ZORG,
+            BSKEY=f"{request.IFYWID}_{random_str_generate()}",
+            SAPKEY=f"{request.IFYWID}_{random_str_generate()}",
+            ZORG=None,
             ZFILED1=request.ZFILED1,
             ZFILED2=request.ZFILED2,
             ZFILED3=request.ZFILED3,
             ZFILED4=request.ZFILED4,
-            ZFILED5=request.ZFILED5,
+            ZFILED5=_ZFILED5,
             ZDATA=response,
         )
     )

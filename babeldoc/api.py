@@ -42,10 +42,18 @@ async def po_exception_handler(
         MESSAGE=exc.message
     )
 
+    # 优先从异常携带的原始请求对象取 BSKEY/SAPKEY，取不到则回退到 config
+    if exc.request is not None:
+        bskey = exc.request.IS_INPUT.BSKEY
+        sapkey = exc.request.IS_INPUT.SAPKEY
+    else:
+        bskey = ""
+        sapkey = ""
+
     po_response = PoOutputResponseDescription(
         ES_OUTPUT=PoOutputResponse(
-            BSKEY=config.BSKEY,
-            SAPKEY=config.SAPKEY,
+            BSKEY=bskey,
+            SAPKEY=sapkey,
             ZTYPE="E",
             ZMESSAGE="",
             ZDATA=zdata_response,
@@ -65,8 +73,8 @@ async def global_exception_handler(
 
     return JSONResponse(content=jsonable_encoder(PoOutputResponseDescription(
         ES_OUTPUT=PoOutputResponse(
-            BSKEY=config.BSKEY,
-            SAPKEY=config.SAPKEY,
+            BSKEY="",
+            SAPKEY="",
             ZTYPE="E",
             ZMESSAGE="",
             ZDATA=ZDataResponse(JOBID="", CODE="E_SYS_999", MESSAGE=str(exc)),

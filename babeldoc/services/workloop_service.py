@@ -10,13 +10,13 @@ async def _handle_task(task: Task) -> None:
     try:
         logger.info(f"开始处理任务: task_id={task.task_id}, job_id={task.job_id}")
         result = await process_translation(task.request)
-        await schedule.complete(task.task_id, jsonable_encoder(result))
+        schedule.complete(task.task_id, jsonable_encoder(result))
         logger.info(f"任务处理完成: task_id={task.task_id}")
         if config.callback_url:
             await notify_callback(config.callback_url, task.task_id, jsonable_encoder(result))
     except asyncio.CancelledError:
         logger.info(f"任务被取消: task_id={task.task_id}")
-        await schedule.fail(task.task_id, "任务已取消")
+        schedule.fail(task.task_id, "任务已取消")
         if config.callback_url:
             await notify_callback(
                 config.callback_url,
@@ -25,7 +25,7 @@ async def _handle_task(task: Task) -> None:
             )
     except Exception as e:
         logger.error(f"任务处理失败: task_id={task.task_id}, error={e}")
-        await schedule.fail(task.task_id, str(e))
+        schedule.fail(task.task_id, str(e))
     finally:
         semaphore.release()
 
@@ -33,7 +33,7 @@ async def worker_loop() -> None:
     """后台 Worker：不断从队列头部取任务并并发执行翻译"""
     logger.info(f"翻译任务 Worker 已启动，最大并发数: {semaphore._value}")
     while True:
-        task = await schedule.get_next()
+        task = schedule.get_next()
         if task is None:
             await asyncio.sleep(0.2)
             continue

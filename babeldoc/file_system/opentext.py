@@ -1,7 +1,7 @@
 import httpx 
-from config.config import get_config
+from babeldoc.config.config import get_config
 from babeldoc.schemas.api.file_system_execption import FileSystemUploadError, FileSystemDownloadError
-from schemas.api.file_system import OpenTextUploadResponse
+from babeldoc.schemas.api.file_system import OpenTextUploadResponse
 import logging
 logger = logging.getLogger(__name__)
 

@@ -255,29 +255,30 @@ openai_config:
   # If not set, no reasoning field is sent for term extraction requests.
   term_extraction_reasoning: null
 
+# 
 max_concurrent_translations: 10
-task_timeout: 3600
 
 mineru_base_url: "http://10.16.6.191:8001"
 # mineru parameters setted in _mineru.py
 
 # PO API 
-ES_OUTPUT: "ES_OUTPUT"
 BSKEY: "BSKEY"
 SAPKEY: "SAPKEY"
-IS_INPUT: "IS_INPUT"
 SYSID: "JWQT"
 ZORG: "ZORG"
-# 翻译完成后的回调地址（null 表示不回调）
+# async api callback url
 callback_url: null
 
-# 文件系统
-file_url: ""
-USERNAME: "YNewAPi@2026#A"
-PASSWORD: "YNewAPi@2026#A"
+# file system parameters (from 数科文件系统)
+file_url: "http://10.0.0.111:8090"
+USERNAME: "wqwertyuop"
+PASSWORD: "QWasdfg@#1016"
 msgType_SUCCESS: "S"
 
 
-# timeout 
-task_timeout: 300.0
+# timeout
+# task lifetime (in seconds)
+task_timeout: 3600.0
+
+# async api callback timeout (in seconds)
 callback_timeout: 30.0

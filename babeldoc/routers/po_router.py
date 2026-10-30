@@ -11,7 +11,7 @@ from schemas.api.po import (
 )
 from schemas.api.po_execptions import PoValidationError, PoErrorCode
 from app_devs import schedule, logger
-from services.translation_service import verify_IFYWID
+from config.config import verify_IFYWID
 
 router = APIRouter()
 
@@ -29,9 +29,10 @@ async def get_translate_result(request: PoInputRequestDescription) -> JSONRespon
         raise PoValidationError(
             message="TEXT、PICTURE、FILE_ID 三者之一不能为空",
             job_id=zdata.JOBID,
+            request=request,  # 携带原始请求对象，供异常处理器使用
         )
 
-    response_IFYWID = await verify_IFYWID(request.IS_INPUT.IFYWID)
+    response_IFYWID = verify_IFYWID(request.IS_INPUT.IFYWID)
     request.IS_INPUT.IFYWID = response_IFYWID
 
     if zdata.TEXT is not None:
@@ -43,7 +44,7 @@ async def get_translate_result(request: PoInputRequestDescription) -> JSONRespon
             TEXT=translated_text,
         )
     else:
-        task = await schedule.submit(request.IS_INPUT)
+        task = schedule.submit(request.IS_INPUT)
         logger.info(f"任务已入队: task_id={task.task_id}, job_id={task.job_id}")
         response = ZDataResponse(
             JOBID=request.IS_INPUT.ZDATA.JOBID,

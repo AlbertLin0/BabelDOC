@@ -84,7 +84,8 @@ class Schedule:
         self._processing: Dict[str, Task] = {}
         # TODO: 定时清理任务
         self._completed: Dict[str, Task] = {}
-        self._lock = asyncio.Lock()
+        # 说明：在 asyncio 单线程模型下，以下所有方法都是微秒级内存操作，
+        # 不存在并发竞争，因此不需要 asyncio.Lock 也不需要 async 修饰
 
     @classmethod
     def get_instance(cls) -> "Schedule":
@@ -92,98 +93,89 @@ class Schedule:
             cls._instance = cls()
         return cls._instance
 
-    async def submit(self, request: PoInputRequest) -> Task:
-        """提交任务到队列末尾"""
-        async with self._lock:
-            task = Task(task_id=str(uuid.uuid4()), request=request)
-            # self._pending.append(task)
-            pass
-            return task
+    def submit(self, request: PoInputRequest) -> Task:
+        """提交任务到队列末尾（纯内存操作，同步即可）"""
+        task = Task(task_id=str(uuid.uuid4()), request=request)
+        self._pending.append(task)
+        return task
 
-    async def get_next(self) -> Optional[Task]:
-        """获取队列头部任务并标记为处理中"""
-        async with self._lock:
-            if not self._pending:
-                return None
-            task = self._pending.pop(0)
-            task.status = TaskStatus.PROCESSING
-            task.started_at = time.time()
-            self._processing[task.task_id] = task
-            return task
+    def get_next(self) -> Optional[Task]:
+        """获取队列头部任务并标记为处理中（纯内存操作，同步即可）"""
+        if not self._pending:
+            return None
+        task = self._pending.pop(0)
+        task.status = TaskStatus.PROCESSING
+        task.started_at = time.time()
+        self._processing[task.task_id] = task
+        return task
 
-    async def move_to_position(self, task_id: str, position: int) -> Task:
+    def move_to_position(self, task_id: str, position: int) -> Task:
         """将任务移动到指定位置（0 为队首）"""
-        async with self._lock:
-            task = self._find_pending(task_id)
-            self._pending.remove(task)
-            position = max(0, min(position, len(self._pending)))
-            self._pending.insert(position, task)
-            return task
+        task = self._find_pending(task_id)
+        self._pending.remove(task)
+        position = max(0, min(position, len(self._pending)))
+        self._pending.insert(position, task)
+        return task
 
-    async def move_to_front(self, task_id: str) -> Task:
+    def move_to_front(self, task_id: str) -> Task:
         """将任务移动到队首"""
-        return await self.move_to_position(task_id, 0)
+        return self.move_to_position(task_id, 0)
 
-    async def move_to_back(self, task_id: str) -> Task:
+    def move_to_back(self, task_id: str) -> Task:
         """将任务移动到队尾"""
-        async with self._lock:
-            return await self.move_to_position(task_id, len(self._pending) - 1)
+        return self.move_to_position(task_id, len(self._pending) - 1)
 
-    async def remove(self, task_id: str) -> Task:
+    def remove(self, task_id: str) -> Task:
         """从等待队列中移除任务"""
-        async with self._lock:
-            task = self._find_pending(task_id)
-            self._pending.remove(task)
-            task._event.set()
-            return task
+        task = self._find_pending(task_id)
+        self._pending.remove(task)
+        task._event.set()
+        return task
 
-    async def cancel(self, task_id: str) -> Task:
+    def cancel(self, task_id: str) -> Task:
         """取消任务：等待中的直接移除，执行中的尝试中断"""
-        async with self._lock:
-            # 1. 等待队列中的任务：直接移除
-            for i, task in enumerate(self._pending):
-                if task.task_id == task_id:
-                    self._pending.pop(i)
-                    task.cancelled = True
-                    task.status = TaskStatus.FAILED
-                    task.error = "任务已取消"
-                    task._event.set()
-                    logger.info(f"已取消等待中的任务: task_id={task_id}")
-                    return task
-            # 2. 正在执行的任务：设置标志并中断 asyncio 任务
-            task = self._processing.get(task_id)
-            if task is not None:
-                task.cancel()
-                logger.info(f"正在取消执行中的任务: task_id={task_id}")
+        # 1. 等待队列中的任务：直接移除
+        for i, task in enumerate(self._pending):
+            if task.task_id == task_id:
+                self._pending.pop(i)
+                task.cancelled = True
+                task.status = TaskStatus.FAILED
+                task.error = "任务已取消"
+                task._event.set()
+                logger.info(f"已取消等待中的任务: task_id={task_id}")
                 return task
-            # 3. 已完成的任务
-            if task_id in self._completed:
-                raise ValueError(f"任务 {task_id} 已完成，无法取消")
-            raise ValueError(f"任务 {task_id} 不存在")
+        # 2. 正在执行的任务：设置标志并中断 asyncio 任务
+        task = self._processing.get(task_id)
+        if task is not None:
+            task.cancel()
+            logger.info(f"正在取消执行中的任务: task_id={task_id}")
+            return task
+        # 3. 已完成的任务
+        if task_id in self._completed:
+            raise ValueError(f"任务 {task_id} 已完成，无法取消")
+        raise ValueError(f"任务 {task_id} 不存在")
 
-    async def complete(self, task_id: str, result: Optional[Dict[str, Any]] = None) -> None:
+    def complete(self, task_id: str, result: Optional[Dict[str, Any]] = None) -> None:
         """标记任务为已完成"""
-        async with self._lock:
-            task = self._processing.pop(task_id, None)
-            if task is None:
-                return
-            task.status = TaskStatus.COMPLETED
-            task.completed_at = time.time()
-            task.result = result
-            self._completed[task_id] = task
-            task._event.set()
+        task = self._processing.pop(task_id, None)
+        if task is None:
+            return
+        task.status = TaskStatus.COMPLETED
+        task.completed_at = time.time()
+        task.result = result
+        self._completed[task_id] = task
+        task._event.set()
 
-    async def fail(self, task_id: str, error: str) -> None:
+    def fail(self, task_id: str, error: str) -> None:
         """标记任务为失败"""
-        async with self._lock:
-            task = self._processing.pop(task_id, None)
-            if task is None:
-                return
-            task.status = TaskStatus.FAILED
-            task.completed_at = time.time()
-            task.error = error
-            self._completed[task_id] = task
-            task._event.set()
+        task = self._processing.pop(task_id, None)
+        if task is None:
+            return
+        task.status = TaskStatus.FAILED
+        task.completed_at = time.time()
+        task.error = error
+        self._completed[task_id] = task
+        task._event.set()
 
     def _find_pending(self, task_id: str) -> Task:
         for task in self._pending:
@@ -191,39 +183,35 @@ class Schedule:
                 return task
         raise ValueError(f"任务 {task_id} 不在等待队列中")
 
-    async def get_pending_tasks(self) -> List[Dict[str, Any]]:
+    def get_pending_tasks(self) -> List[Dict[str, Any]]:
         """获取等待队列中的所有任务（含排队位置）"""
-        async with self._lock:
-            result = []
-            for index, task in enumerate(self._pending):
-                d = task.to_dict()
-                d["position"] = index
-                result.append(d)
-            return result
+        result = []
+        for index, task in enumerate(self._pending):
+            d = task.to_dict()
+            d["position"] = index
+            result.append(d)
+        return result
 
-    async def get_processing_tasks(self) -> List[Dict[str, Any]]:
+    def get_processing_tasks(self) -> List[Dict[str, Any]]:
         """获取正在处理中的任务"""
-        async with self._lock:
-            return [t.to_dict() for t in self._processing.values()]
+        return [t.to_dict() for t in self._processing.values()]
 
-    async def get_completed_tasks(self, limit: int = 100) -> List[Dict[str, Any]]:
+    def get_completed_tasks(self, limit: int = 100) -> List[Dict[str, Any]]:
         """获取最近完成的任务"""
-        async with self._lock:
-            tasks = sorted(
-                self._completed.values(),
-                key=lambda t: t.completed_at or 0,
-                reverse=True,
-            )
-            return [t.to_dict() for t in tasks[:limit]]
+        tasks = sorted(
+            self._completed.values(),
+            key=lambda t: t.completed_at or 0,
+            reverse=True,
+        )
+        return [t.to_dict() for t in tasks[:limit]]
 
-    async def get_task(self, task_id: str) -> Optional[Dict[str, Any]]:
+    def get_task(self, task_id: str) -> Optional[Dict[str, Any]]:
         """获取单个任务详情"""
-        async with self._lock:
-            for task in self._pending:
-                if task.task_id == task_id:
-                    return task.to_dict()
-            if task_id in self._processing:
-                return self._processing[task_id].to_dict()
-            if task_id in self._completed:
-                return self._completed[task_id].to_dict()
-            return None
+        for task in self._pending:
+            if task.task_id == task_id:
+                return task.to_dict()
+        if task_id in self._processing:
+            return self._processing[task_id].to_dict()
+        if task_id in self._completed:
+            return self._completed[task_id].to_dict()
+        return None

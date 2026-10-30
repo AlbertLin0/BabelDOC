@@ -1,6 +1,7 @@
 import yaml
 from pathlib import Path
 from typing import Optional
+from schemas.api.po_execptions import PoValidationError
 
 class Config:
     _instance: Optional["Config"] = None
@@ -25,11 +26,6 @@ class Config:
         self.debug = self._raw["debug"]
 
         # PO API 
-        self.ES_OUTPUT = self._raw["ES_OUTPUT"]
-        self.BSKEY = self._raw["BSKEY"]
-        self.SAPKEY = self._raw["SAPKEY"]
-        self.IS_INPUT = self._raw["IS_INPUT"]
-        self.SYSID = self._raw["SYSID"]
         self.ZORG = self._raw["ZORG"]
         self.callback_url = self._raw.get("callback_url")
 
@@ -51,3 +47,32 @@ class Config:
 
 def get_config() -> Config:
     return Config.get_instance()
+
+
+
+def verify_IFYWID(IFYWID: str) -> str:
+    """从任务中提取 IFYWID"""
+    if IFYWID == "FI1301":
+        res = "FI1300"
+    elif IFYWID == "FI1299":
+        res = "FI1298"
+    elif IFYWID == "FI1297":
+        res = "FI1296"
+    else:
+        raise PoValidationError(message=f"未知 IFYYWID: {IFYWID}")
+    return res
+
+def verify_patch(SYSID: str) -> tuple[str, str]:
+    """
+    @return: SYSID 对应的 返回 SYSID 和 ZFILED5
+    """
+    """验证 SYSID 是否匹配"""
+    if SYSID == "JWYX":
+        return "FYMX", "YXQ"
+    elif SYSID == "JWQT":
+        return "FYZNT", "QTQ"
+    elif SYSID == "JWS4":
+        return "FYMX", "700"
+    else:
+        raise PoValidationError(message=f"未知 SYSID: {SYSID}")
+
