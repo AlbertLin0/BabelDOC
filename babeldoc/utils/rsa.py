@@ -35,6 +35,11 @@ def _load_keys() -> tuple[RSAPrivateKey, RSAPublicKey]:
     - RSA_ENCRYPT_PUBLIC_KEY: 对方的公钥，加密后对方用 RSA_ENCRYPT_PRIVATE_KEY 解密
     """
     # 解密入站：对方用 RSA_DECRYPT_PUBLIC_KEY 加密 → 我们用 RSA_DECRYPT_PRIVATE_KEY 解密
+    if "RSA_DECRYPT_PRIVATE_KEY" not in os.environ:
+        exit("RSA_DECRYPT_PRIVATE_KEY 环境变量未设置")
+    if "RSA_ENCRYPT_PUBLIC_KEY" not in os.environ:
+        exit("RSA_ENCRYPT_PUBLIC_KEY 环境变量未设置")
+
     priv_b64 = _clean_b64(os.environ["RSA_DECRYPT_PRIVATE_KEY"])
     private_key = cast(
         RSAPrivateKey,
@@ -66,54 +71,68 @@ _public_key: RSAPublicKey
 _private_key, _public_key = _load_keys()
 
 # ========= Padding 配置 =========
-# TODO: 如果加解密不通，切换为 PKCS1v15（Java 默认）
-_PADDING = padding.OAEP(
-    mgf=padding.MGF1(algorithm=hashes.SHA256()),
-    algorithm=hashes.SHA256(),
-    label=None,
-)
+# 根据数科设置的参数
+_KEY_SIZE_BYTES = 256  
+_MAX_ENCRYPT_CHUNK = 245  
+_OPERATES = "123456789"  # ⚠️ 必须与Java端OPERATES常量保持一致！
+_PADDING = padding.PKCS1v15()
 
-# RSA-2048 分段参数
-_KEY_SIZE_BYTES = _private_key.key_size // 8  # 256
-_MAX_ENCRYPT_CHUNK = _KEY_SIZE_BYTES - 64 - 2  # OAEP SHA256 最大加密块 = 190
 
 def rsa_decrypt(ciphertext_b64: str) -> str:
-    """RSA 分段解密（解密入站请求：前台用公钥加密→我们用私钥解密）
-
+    """RSA 分段解密（对齐Java端decrypt方法）
+    
     Args:
-        ciphertext_b64: Base64 编码的密文
-
+        ciphertext_b64: 分段Base64拼接的密文字符串（含OPERATES分隔符）
+    
     Returns:
         解密后的 UTF-8 明文字符串
     """
-    ciphertext = base64.b64decode(ciphertext_b64)
-    plaintext = bytearray()
+    # 1. 严格对齐Java Line141-142的预处理
+    cleaned = (
+        ciphertext_b64
+        .replace("\\", "")
+        .replace(" ", "")
+        .replace("\n", "")
+        .replace("\r", "")
+        .replace("\t", "")
+    )
+    
+    # 2. 按OPERATES分隔符拆分密文块（对齐Java Line143）
+    blocks = [b for b in cleaned.split(_OPERATES) if b]
+    
+    plaintext_parts = []
+    for idx, block in enumerate(blocks):
+        try:
+            raw = base64.b64decode(block)
+            decrypted = _private_key.decrypt(raw, _PADDING)
+            plaintext_parts.append(decrypted)
+        except Exception as e:
+            raise ValueError(f"第{idx+1}个密文块解密失败: {e}") from e
+    
+    return b"".join(plaintext_parts).decode("utf-8")
 
-    for i in range(0, len(ciphertext), _KEY_SIZE_BYTES):
-        chunk = ciphertext[i:i + _KEY_SIZE_BYTES]
-        decrypted = _private_key.decrypt(chunk, _PADDING)
-        plaintext.extend(decrypted)
-
-    return plaintext.decode("utf-8")
 
 def rsa_encrypt(plaintext: str) -> str:
-    """RSA 分段加密（加密出站响应：我们用公钥加密→前台用私钥解密）
-
+    """RSA 分段加密（对齐Java端encrypt方法，输出格式与Java完全一致）
+    
     Args:
         plaintext: 要加密的明文字符串
-
+    
     Returns:
-        Base64 编码的密文字符串
+        分段Base64 + OPERATES分隔符拼接的密文字符串
     """
     plaintext_bytes = plaintext.encode("utf-8")
-    ciphertext = bytearray()
-
+    encrypted_blocks = []
+    
     for i in range(0, len(plaintext_bytes), _MAX_ENCRYPT_CHUNK):
         chunk = plaintext_bytes[i:i + _MAX_ENCRYPT_CHUNK]
-        encrypted = _public_key.encrypt(chunk, _PADDING)
-        ciphertext.extend(encrypted)
-
-    return base64.b64encode(bytes(ciphertext)).decode("utf-8")
+        encrypted_chunk = _public_key.encrypt(chunk, _PADDING)
+        # 对齐Java Line78：每个块单独Base64编码，再拼分隔符
+        b64_block = base64.b64encode(encrypted_chunk).decode("utf-8")
+        encrypted_blocks.append(b64_block)
+    
+    # 用OPERATES拼接所有块的Base64字符串（对齐Java Line78）
+    return _OPERATES.join(encrypted_blocks)
 
 def encrypt_data(obj: any) -> str:
     """把响应对象序列化为 JSON 后 RSA 加密返回"""
