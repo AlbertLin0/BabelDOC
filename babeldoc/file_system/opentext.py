@@ -11,14 +11,19 @@ config = get_config()
 async def file_upload(file_path: str, ArcId: str) -> OpenTextUploadResponse:
     """从工作区中上传文件到OpenText"""
     async with httpx.AsyncClient() as client:
+        headers = {
+            "USERNAME": config.USERNAME,
+            "PASSWORD": config.PASSWORD
+        }
         response = await client.post(
             f"{config.file_url}/uploadFile/UploadServlet?ArcId={ArcId}",
             files={"file": open(file_path, "rb")},
-            auth=(config.USERNAME, config.PASSWORD),
+            headers=headers
         )
         response.raise_for_status()
-        if response.status_code == 200 and response.json()["msgType"] == config.msgType_SUCCESS:
-            return OpenTextUploadResponse(**response.json())
+        tmp = response.json()[0]
+        if response.status_code == 200 and tmp["msgType"] == config.msgType_SUCCESS:
+            return OpenTextUploadResponse(**tmp)
         else:
             logger.error(f"文件上传失败，状态码：{response.status_code}，响应内容：{response.json()}")
             raise FileSystemUploadError(f"文件上传失败，状态码：{response.status_code}")
@@ -49,5 +54,10 @@ async def file_download(ArcId: str, DocId: str, file_path: str) -> None:
             response = await client.get(redirect_url)
 
         response.raise_for_status()
-        with open(file_path, "wb") as f:
-            f.write(response.content)
+
+        if not file_path.endswith(".pdf"):
+            raise FileSystemDownloadError("文件路径必须以 .pdf 结尾")
+
+        if response.status_code == 200:
+            with open(file_path, "wb") as f:
+                f.write(response.content)
