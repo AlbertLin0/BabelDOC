@@ -43,7 +43,7 @@ class PoInputRequest(BaseModel):
     ZFILED3: Optional[str] = Field(None, description="预留字段")
     ZFILED4: Optional[str] = Field(None, description="预留字段")
     ZFILED5: str = Field(..., description="系统服务器") # 备注说是必填
-    ZDATA: ZDataInput = Field(..., description="业务数据JSON串") 
+    ZDATA: str = Field(..., description="加密后的ZDataInput业务数据JSON串") 
 
     class Config:
         # 禁止额外字段，防止对方多传了字段导致报错
@@ -63,7 +63,7 @@ class PoOutputResponse(BaseModel):
     SAPKEY: Optional[str] = Field(None, description="SAP数据唯一标识")
     ZTYPE: Literal["S", "E"] = Field(..., description="处理消息标识(S：成功，E：失败)")
     ZMESSAGE: Optional[str] = Field(None, description="处理消息文本")
-    ZDATA: ZDataResponse = Field(..., description="返回业务数据JSON串")
+    ZDATA: str = Field(..., description="返回加密后的ZDataResponse业务数据JSON串")
 
 
 # ========= 异步返回信息结构 ==========
@@ -97,7 +97,7 @@ class PoReturnRequest(BaseModel):
     ZFILED3: Optional[str] = Field(None, description="预留字段")
     ZFILED4: Optional[str] = Field(None, description="预留字段")
     ZFILED5: str = Field(..., description="系统服务器") # 备注说是必填
-    ZDATA: ZDataPayload = Field(..., description="业务数据JSON串") 
+    ZDATA: str = Field(..., description="加密后的ZDataPayload业务数据JSON串") 
 
     class Config:
         # 禁止额外字段，防止对方多传了字段导致报错

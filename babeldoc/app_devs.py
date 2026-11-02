@@ -1,8 +1,8 @@
 import asyncio
 import logging
 
-from config.config import get_config
-from schedule.schedule import Schedule
+from babeldoc.config.config import get_config
+from babeldoc.schedule.schedule import Schedule
 
 logger = logging.getLogger("数科调度翻译服务")
 logging.basicConfig(level=logging.INFO)

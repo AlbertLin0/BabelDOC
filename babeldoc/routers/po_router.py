@@ -9,6 +9,7 @@ from schemas.api.po import (
     PoOutputResponse,
     ZDataResponse,
 )
+from babeldoc.utils.rsa import decrypt_data, encrypt_data
 from schemas.api.po_execptions import PoValidationError, PoErrorCode
 from app_devs import schedule, logger
 from config.config import verify_IFYWID
@@ -24,7 +25,7 @@ async def get_translate_result(request: PoInputRequestDescription) -> JSONRespon
     logger.debug("收到翻译请求: ")
     logger.debug(json.dumps(request.model_dump(), ensure_ascii=False))
 
-    zdata = request.IS_INPUT.ZDATA
+    zdata = decrypt_data(request.IS_INPUT.ZDATA)
     if not (zdata.TEXT is not None or zdata.PICTURE is not None or zdata.FILE_ID is not None):
         raise PoValidationError(
             message="TEXT、PICTURE、FILE_ID 三者之一不能为空",
@@ -47,7 +48,7 @@ async def get_translate_result(request: PoInputRequestDescription) -> JSONRespon
         task = schedule.submit(request.IS_INPUT)
         logger.info(f"任务已入队: task_id={task.task_id}, job_id={task.job_id}")
         response = ZDataResponse(
-            JOBID=request.IS_INPUT.ZDATA.JOBID,
+            JOBID=zdata.JOBID,
             CODE=PoErrorCode.SUCCESS.value,
             MESSAGE=f"任务已提交，task_id={task.task_id}",
         )
@@ -60,7 +61,7 @@ async def get_translate_result(request: PoInputRequestDescription) -> JSONRespon
                     SAPKEY=request.IS_INPUT.SAPKEY,
                     ZTYPE="S",
                     ZMESSAGE="",
-                    ZDATA=response,
+                    ZDATA=encrypt_data(response),
                 )
             )
         )

@@ -2,14 +2,13 @@ import asyncio
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
-from schemas.api.po import PoInputRequest, ZDataPayload, ZDataResponse, PoOutputResponse, PoResponseFlag, PoReturnRequest
-from schemas.api.po import PoInputRequestDescription, PoReturnRequestDescription, PoOutputResponseDescription
-from schemas.api.po_execptions import PoApiException
-from app_devs import logger, config
-from services.workloop_service import worker_loop
+from babeldoc.schemas.api.po import ZDataResponse, PoOutputResponse, PoOutputResponseDescription
+from babeldoc.schemas.api.po_execptions import PoApiException
+from babeldoc.app_devs import logger, config
+from babeldoc.services.workloop_service import worker_loop
 from babeldoc.routers.po_router import router as po_router
 from babeldoc.routers.queue_router import router as queue_router
-
+from babeldoc.utils.rsa import encrypt_data
 
 
 app = FastAPI(title="数科调度翻译服务")
@@ -56,7 +55,7 @@ async def po_exception_handler(
             SAPKEY=sapkey,
             ZTYPE="E",
             ZMESSAGE="",
-            ZDATA=zdata_response,
+            ZDATA=encrypt_data(zdata_response),
         )
     )
 
@@ -77,7 +76,7 @@ async def global_exception_handler(
             SAPKEY="",
             ZTYPE="E",
             ZMESSAGE="",
-            ZDATA=ZDataResponse(JOBID="", CODE="E_SYS_999", MESSAGE=str(exc)),
+            ZDATA=encrypt_data(ZDataResponse(JOBID="", CODE="E_SYS_999", MESSAGE=str(exc))),
         )
     )))
 

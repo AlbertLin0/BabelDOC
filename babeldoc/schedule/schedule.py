@@ -5,11 +5,11 @@ import logging
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional
-from schemas.api.po import PoInputRequest
+from babeldoc.schemas.api.po import PoInputRequest
 
 logger = logging.getLogger(__name__)
 
-from config.config import get_config
+from babeldoc.config.config import get_config
 config = get_config()
 
 
