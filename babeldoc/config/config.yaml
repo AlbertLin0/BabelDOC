@@ -270,9 +270,9 @@ ZORG: "ZORG"
 callback_url: null
 
 # file system parameters (from 数科文件系统)
-file_url: "http://10.0.0.111:8080"
-USERNAME: "wqwertyuop"
-PASSWORD: "QWasdfg@#1016"
+file_url: ""
+USERNAME: ""
+PASSWORD: ""
 msgType_SUCCESS: "S"
 
 
