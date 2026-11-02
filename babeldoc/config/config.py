@@ -1,7 +1,7 @@
 import yaml
 from pathlib import Path
 from typing import Optional
-from schemas.api.po_execptions import PoValidationError
+from babeldoc.schemas.api.po_execptions import PoValidationError
 
 class Config:
     _instance: Optional["Config"] = None
