@@ -6,6 +6,7 @@ from babeldoc.schemas.api.po import (
     PoReturnRequestDescription,
     ZDataPayload,
     PoResponseFlag,
+    ZDataInput,
 )
 from babeldoc.schemas.api.po_execptions import PoValidationError
 from babeldoc.app_devs import config
@@ -20,7 +21,7 @@ def random_str_generate(length: int = 10) -> str:
 
 async def process_translation(request: PoInputRequest) -> PoReturnRequestDescription:
     """翻译任务处理逻辑（占位实现，后续接入真实翻译流程）"""
-    zdata = decrypt_data(request.ZDATA)  # ZDataInput # 冗余操作，后续需要根据需求调整
+    zdata = ZDataInput(**decrypt_data(request.ZDATA))  # ZDataInput # 冗余操作，后续需要根据需求调整
     if zdata.PICTURE is not None:
         new_FILE_ID = "FI23456"
         new_FILE_NAME = f"{zdata.FILE_NAME}_translated.png"

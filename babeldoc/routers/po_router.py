@@ -8,6 +8,7 @@ from schemas.api.po import (
     PoOutputResponseDescription,
     PoOutputResponse,
     ZDataResponse,
+    ZDataInput,
 )
 from babeldoc.utils.rsa import decrypt_data, encrypt_data
 from schemas.api.po_execptions import PoValidationError, PoErrorCode
@@ -25,7 +26,7 @@ async def get_translate_result(request: PoInputRequestDescription) -> JSONRespon
     logger.debug("收到翻译请求: ")
     logger.debug(json.dumps(request.model_dump(), ensure_ascii=False))
 
-    zdata = decrypt_data(request.IS_INPUT.ZDATA)
+    zdata = ZDataInput(**decrypt_data(request.IS_INPUT.ZDATA))
     if not (zdata.TEXT is not None or zdata.PICTURE is not None or zdata.FILE_ID is not None):
         raise PoValidationError(
             message="TEXT、PICTURE、FILE_ID 三者之一不能为空",
