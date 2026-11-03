@@ -9,7 +9,7 @@ async def _handle_task(task: Task) -> None:
     """后台协程：处理单个翻译任务的完整生命周期（完成 / 失败 / 回调）"""
     try:
         logger.info(f"开始处理任务: task_id={task.task_id}, job_id={task.job_id}")
-        result = await process_translation(task.request)
+        result = await process_translation(task.request, task.ifywid)
         schedule.complete(task.task_id, jsonable_encoder(result))
         logger.info(f"任务处理完成: task_id={task.task_id}")
         if config.callback_url:

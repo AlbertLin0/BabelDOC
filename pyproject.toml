@@ -54,7 +54,8 @@ dependencies = [
     "scikit-learn>=1.7.1",
     "pyyaml>=6.0",
     "mineru>=4.0,<5",
-    "cryptography"
+    "cryptography",
+    "dotenv"
 ]
 
 [project.optional-dependencies]

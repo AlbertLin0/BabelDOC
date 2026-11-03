@@ -1,5 +1,4 @@
-import random
-import string
+
 from babeldoc.schemas.api.po import (
     PoInputRequest,
     PoReturnRequest,
@@ -10,18 +9,15 @@ from babeldoc.schemas.api.po import (
 )
 from babeldoc.schemas.api.po_execptions import PoValidationError
 from babeldoc.app_devs import config
-from babeldoc.config.config import verify_patch
+from babeldoc.config.config import verify_SYSID, random_str_generate
 from babeldoc.utils.rsa import decrypt_data, encrypt_data
 
-def random_str_generate(length: int = 10) -> str:
-    """生成随机字符串"""
-    return "".join(random.choices(string.ascii_letters + string.digits, k=length))
 
 
 
-async def process_translation(request: PoInputRequest) -> PoReturnRequestDescription:
+async def process_translation(request: PoInputRequest, ifywid: str) -> PoReturnRequestDescription:
     """翻译任务处理逻辑（占位实现，后续接入真实翻译流程）"""
-    zdata = ZDataInput(**decrypt_data(request.ZDATA))  # ZDataInput # 冗余操作，后续需要根据需求调整
+    zdata = ZDataInput(**decrypt_data(request.ZDATA, request.SYSID))  # ZDataInput # 冗余操作，后续需要根据需求调整
     if zdata.PICTURE is not None:
         new_FILE_ID = "FI23456"
         new_FILE_NAME = f"{zdata.FILE_NAME}_translated.png"
@@ -51,19 +47,19 @@ async def process_translation(request: PoInputRequest) -> PoReturnRequestDescrip
         ZEXTRA4=zdata.ZEXTRA4,
         ZEXTRA5=zdata.ZEXTRA5,
     )
-    _SYSID, _ZFILED5 = verify_patch(request.SYSID)
+    _SYSID, _ZFILED5 = verify_SYSID(request.SYSID)
     return PoReturnRequestDescription(
         IS_INPUT=PoReturnRequest(
             SYSID=_SYSID,
-            IFYWID=request.IFYWID,
-            BSKEY=f"{request.IFYWID}_{random_str_generate()}",
-            SAPKEY=f"{request.IFYWID}_{random_str_generate()}",
+            IFYWID=ifywid,
+            BSKEY=f"{ifywid}_{random_str_generate()}",
+            SAPKEY=f"{ifywid}_{random_str_generate()}",
             ZORG=None,
             ZFILED1=request.ZFILED1,
             ZFILED2=request.ZFILED2,
             ZFILED3=request.ZFILED3,
             ZFILED4=request.ZFILED4,
             ZFILED5=_ZFILED5,
-            ZDATA=encrypt_data(response),
+            ZDATA=encrypt_data(response, request.IFYWID),
         )
     )

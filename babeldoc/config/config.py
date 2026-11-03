@@ -1,4 +1,6 @@
 import yaml
+import random
+import string
 from pathlib import Path
 from typing import Optional
 from babeldoc.schemas.api.po_execptions import PoValidationError
@@ -62,7 +64,7 @@ def verify_IFYWID(IFYWID: str) -> str:
         raise PoValidationError(message=f"未知 IFYYWID: {IFYWID}")
     return res
 
-def verify_patch(SYSID: str) -> tuple[str, str]:
+def verify_SYSID(SYSID: str) -> tuple[str, str]:
     """
     @return: SYSID 对应的 返回 SYSID 和 ZFILED5
     """
@@ -76,3 +78,6 @@ def verify_patch(SYSID: str) -> tuple[str, str]:
     else:
         raise PoValidationError(message=f"未知 SYSID: {SYSID}")
 
+def random_str_generate(length: int = 10) -> str:
+    """生成随机字符串"""
+    return "".join(random.choices(string.ascii_letters + string.digits, k=length))

@@ -5,7 +5,7 @@ import logging
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional
-from babeldoc.schemas.api.po import PoInputRequest
+from babeldoc.schemas.api.po import PoInputRequest, ZDataInput
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +28,9 @@ class Task:
 
     task_id: str
     request: PoInputRequest
+    ifywid: str
+    zdata: ZDataInput
+
     status: TaskStatus = TaskStatus.PENDING
     created_at: float = field(default_factory=time.time)
     started_at: Optional[float] = None
@@ -46,11 +49,11 @@ class Task:
 
     @property
     def job_id(self) -> str:
-        return self.request.ZDATA.JOBID
+        return self.zdata.JOBID
 
     @property
     def file_name(self) -> Optional[str]:
-        return self.request.ZDATA.FILE_NAME
+        return self.zdata.FILE_NAME
 
     async def wait(self, timeout: Optional[float] = None) -> bool:
         """等待任务处理完成"""
@@ -93,9 +96,9 @@ class Schedule:
             cls._instance = cls()
         return cls._instance
 
-    def submit(self, request: PoInputRequest) -> Task:
+    def submit(self, request: PoInputRequest, IFYWID: str, zdata: ZDataInput) -> Task:
         """提交任务到队列末尾（纯内存操作，同步即可）"""
-        task = Task(task_id=str(uuid.uuid4()), request=request)
+        task = Task(task_id=str(uuid.uuid4()), request=request, ifywid=IFYWID, zdata=zdata)
         self._pending.append(task)
         return task
 
