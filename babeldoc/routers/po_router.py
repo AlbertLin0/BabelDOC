@@ -26,7 +26,7 @@ async def get_translate_result(request: PoInputRequestDescription) -> JSONRespon
     logger.debug("收到翻译请求: ")
     logger.debug(json.dumps(request.model_dump(), ensure_ascii=False))
 
-    zdata = ZDataInput(**decrypt_data(request.IS_INPUT.ZDATA))
+    zdata = ZDataInput(**decrypt_data(request.IS_INPUT.ZDATA, request.IS_INPUT.SYSID))
     if not (zdata.TEXT is not None or zdata.PICTURE is not None or zdata.FILE_ID is not None):
         raise PoValidationError(
             message="TEXT、PICTURE、FILE_ID 三者之一不能为空",
@@ -35,7 +35,7 @@ async def get_translate_result(request: PoInputRequestDescription) -> JSONRespon
         )
 
     response_IFYWID = verify_IFYWID(request.IS_INPUT.IFYWID)
-    request.IS_INPUT.IFYWID = response_IFYWID
+    # request.IS_INPUT.IFYWID = response_IFYWID
 
     if zdata.TEXT is not None:
         translated_text = zdata.TEXT
@@ -46,7 +46,7 @@ async def get_translate_result(request: PoInputRequestDescription) -> JSONRespon
             TEXT=translated_text,
         )
     else:
-        task = schedule.submit(request.IS_INPUT)
+        task = schedule.submit(request.IS_INPUT, response_IFYWID, zdata)
         logger.info(f"任务已入队: task_id={task.task_id}, job_id={task.job_id}")
         response = ZDataResponse(
             JOBID=zdata.JOBID,
@@ -62,7 +62,7 @@ async def get_translate_result(request: PoInputRequestDescription) -> JSONRespon
                     SAPKEY=request.IS_INPUT.SAPKEY,
                     ZTYPE="S",
                     ZMESSAGE="",
-                    ZDATA=encrypt_data(response),
+                    ZDATA=encrypt_data(response, request.IS_INPUT.SYSID),
                 )
             )
         )
