@@ -52,3 +52,5 @@ temp.jpg
 .codex
 .repomap.tags.cache.v1/
 
+*.crt
+*.pem
