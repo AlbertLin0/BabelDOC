@@ -13,6 +13,7 @@ async def _handle_task(task: Task) -> None:
         schedule.complete(task.task_id, jsonable_encoder(result))
         logger.info(f"任务处理完成: task_id={task.task_id}")
         if config.callback_url:
+            logger.info("callback")
             await notify_callback(config.callback_url, task.task_id, jsonable_encoder(result))
     except asyncio.CancelledError:
         logger.info(f"任务被取消: task_id={task.task_id}")
@@ -25,7 +26,9 @@ async def _handle_task(task: Task) -> None:
             )
     except Exception as e:
         logger.error(f"任务处理失败: task_id={task.task_id}, error={e}")
+        logger.exception(f"任务处理失败: task_id={task.task_id}, error={e}")
         schedule.fail(task.task_id, str(e))
+        raise e
     finally:
         semaphore.release()
 

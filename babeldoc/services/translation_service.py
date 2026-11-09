@@ -247,6 +247,6 @@ async def process_translation(request: PoInputRequest, ifywid: str, task_id: str
             ZFILED3=request.ZFILED3,
             ZFILED4=request.ZFILED4,
             ZFILED5=_ZFILED5,
-            ZDATA=encrypt_data(response, request.IFYWID),
+            ZDATA=encrypt_data(response, request.SYSID),
         )
     )

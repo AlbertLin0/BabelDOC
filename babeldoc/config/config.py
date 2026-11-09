@@ -4,7 +4,9 @@ import string
 from pathlib import Path
 from typing import Optional
 from babeldoc.schemas.api.po_execptions import PoValidationError
+import logging
 
+logger = logging.getLogger("xxx")
 class Config:
     _instance: Optional["Config"] = None
 
@@ -30,6 +32,8 @@ class Config:
         # PO API 
         self.ZORG = self._raw["ZORG"]
         self.callback_url = self._raw.get("callback_url")
+        self.callback_PASSWORD = self._raw.get("callback_PASSWORD")
+        self.callback_USERNAME = self._raw.get("callback_USERNAME")
 
         # 文件系统
         self.file_url = self._raw["file_url"]

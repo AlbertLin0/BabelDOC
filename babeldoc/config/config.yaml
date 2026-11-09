@@ -221,7 +221,7 @@ openai_config:
   base_url: "http://10.16.6.191:3000/v1"
 
   # The API key for the OpenAI API
-  api_key: "sk-YmydpDkwEHMpElGtNntVubIXCOcmrsCTxBvEmQIyYD7Yxh7j"
+  api_key: "sk-oaDNxIRQHkqMSBVxr6L2bUXVtDBKdox9nILlxWcBi7JmEG9E"
 
   # OpenAI model to use for automatic term extraction. Defaults to model when unset.
   term_extraction_model: null
@@ -267,12 +267,14 @@ SAPKEY: "SAPKEY"
 SYSID: "JWQT"
 ZORG: "ZORG"
 # async api callback url
-callback_url: null
+callback_url: https://10.0.0.111:51001/RESTAdapter/CC_REST_FYMX_SEND
+callback_USERNAME: PO_FYMX
+callback_PASSWORD: "***xGV9Ja"
 
 # file system parameters (from 数科文件系统)
-file_url: ""
-USERNAME: ""
-PASSWORD: ""
+file_url: "http://10.0.0.111:8080"
+USERNAME: "wqwertyuop"
+PASSWORD: "QWasdfg@#1016"
 msgType_SUCCESS: "S"
 
 
@@ -281,4 +283,4 @@ msgType_SUCCESS: "S"
 task_timeout: 3600.0
 
 # async api callback timeout (in seconds)
-callback_timeout: 30.0
+callback_timeout: 300.0

@@ -112,6 +112,7 @@ def rsa_decrypt(ciphertext_b64: str, private_key: RSAPrivateKey) -> str:
     return b"".join(plaintext_parts).decode("utf-8")
 
 
+# TODO: try except
 def rsa_encrypt(plaintext: str, public_key: RSAPublicKey) -> str:
     """RSA 分段加密（对齐Java端encrypt方法，输出格式与Java完全一致）
     

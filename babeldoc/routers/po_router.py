@@ -38,6 +38,7 @@ async def get_translate_result(request: PoInputRequestDescription) -> JSONRespon
     # request.IS_INPUT.IFYWID = response_IFYWID
 
     if zdata.TEXT is not None:
+        logger.info("文本翻译：")
         translated_text = zdata.TEXT
         response = ZDataResponse(
             JOBID=zdata.JOBID,
@@ -46,6 +47,7 @@ async def get_translate_result(request: PoInputRequestDescription) -> JSONRespon
             TEXT=translated_text,
         )
     else:
+        logger.info(f"任务已入队: ")
         task = schedule.submit(request.IS_INPUT, response_IFYWID, zdata)
         logger.info(f"任务已入队: task_id={task.task_id}, job_id={task.job_id}")
         response = ZDataResponse(
