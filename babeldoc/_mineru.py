@@ -2,9 +2,10 @@ import json
 import requests
 
 from pathlib import Path
-from config.config import get_config
+from babeldoc.config.config import get_config
 from mineru.types import MiddleJson
 from mineru.render import PdfLayout, PdfRenderOptions, RenderFormat, render
+from babeldoc.translator.translator import OpenAITranslator
 
 config = get_config()
 def parse_pdf(pdf_path: str) -> dict:
@@ -57,13 +58,58 @@ def download_middle_json(result: dict) -> dict:
     )
 
 
-def render_pdf(input_file: str, task_output_dir: Path) -> dict:  
+def render_pdf(input_file: str, task_output_dir: Path, translator: OpenAITranslator) -> dict:  
+    """
+    parse_pdf 可以改为异步执行，
+    但 render 函数是同步的，所以该函数需要放在线程池中执行。
+    """
 
     mineru_result = parse_pdf(input_file)
     middle_json_raw = download_middle_json(mineru_result)
     middle_json = MiddleJson.from_json(
         json.dumps(middle_json_raw, ensure_ascii=False)
     )
+
+    def recursive(obj) -> list: 
+        # NOTE: need test
+        res = []
+
+        if isinstance(obj.content, str):
+            res.append(obj.content)
+        else: 
+            for item in obj.content: 
+                res.extend(recursive(item))
+        return res
+    # translate
+    # 用多少个并发请求模型呢？ 
+    need_translate = []
+    for page in middle_json.pages:
+        # 构造需要翻译的text
+        for block in page.blocks:
+            for i in block.content:
+                need_translate.extend(recursive(i))
+
+    translated_dict = []
+    batch_size = 20
+    for batch_start in range(0, len(need_translate), batch_size):
+        batch = need_translate[batch_start:batch_start + batch_size]
+        batch_prompt = json.dumps(batch, ensure_ascii=False)
+        batch_result = json.loads(translator.do_translate(batch_prompt))
+        translated_dict.extend(batch_result)
+
+    # 递归写回翻译结果，遍历顺序与 recursive 完全一致
+    def write_back(obj, trans_iter):
+        if isinstance(obj.content, str):
+            obj.content = next(trans_iter)
+        else:
+            for item in obj.content:
+                write_back(item, trans_iter)
+
+    trans_iter = iter(translated_dict)
+    for page in middle_json.pages:
+        for block in page.blocks:
+            for item in block.content:
+                write_back(item, trans_iter)
 
     pdf_bytes = render(
         middle_json,

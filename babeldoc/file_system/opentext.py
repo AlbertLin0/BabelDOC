@@ -27,7 +27,7 @@ async def file_upload(file_path: str, ArcId: str) -> OpenTextUploadResponse:
         else:
             logger.error(f"文件上传失败，状态码：{response.status_code}，响应内容：{response.json()}")
             raise FileSystemUploadError(f"文件上传失败，状态码：{response.status_code}")
-
+            
 
 async def file_download(ArcId: str, DocId: str, file_path: str) -> None:
     # 从 file_url 提取外网 host（如 10.0.0.111:8080）

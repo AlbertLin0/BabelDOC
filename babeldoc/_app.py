@@ -43,7 +43,7 @@ app = FastAPI(title="PDF 翻译服务")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=["http://0.0.0.0:5174"],
     allow_credentials=False,
     allow_methods=["GET", "POST"],
     allow_headers=["*"],

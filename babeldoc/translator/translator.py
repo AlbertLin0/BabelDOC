@@ -266,7 +266,7 @@ class OpenAITranslator(BaseTranslator):
         self.cache_hit_prompt_token_count = AtomicInteger()
 
     @retry(
-        retry=retry_if_exception_type(openai.RateLimitError),
+        retry=retry_if_exception_type((openai.RateLimitError, openai.InternalServerError, openai.APITimeoutError)),
         stop=stop_after_attempt(100),
         wait=wait_exponential(multiplier=1, min=1, max=15),
         before_sleep=before_sleep_log(logger, logging.WARNING),
@@ -289,11 +289,11 @@ class OpenAITranslator(BaseTranslator):
         return [
             {
                 "role": "system",
-                "content": "You are a professional,authentic machine translation engine.",
+                "content": f"You are a professional,authentic machine translation engine. I will give you a dict type input, translate it into {self.lang_out}.",
             },
             {
                 "role": "user",
-                "content": f";; Treat next line as plain text input and translate it into {self.lang_out}, output translation ONLY. If translation is unnecessary (e.g. proper nouns, codes, {'{{1}}, etc. '}), return the original text. NO explanations. NO notes. Input:\n\n{text}",
+                "content": f";; Treat next line as plain text input and translate it into {self.lang_out}, output translation ONLY. If translation is unnecessary (e.g. proper nouns), return the original text. NO explanations. NO notes. Input:\n\n{text}",
             },
         ]
 
@@ -324,7 +324,7 @@ class OpenAITranslator(BaseTranslator):
             response = self.client.chat.completions.create(
                 model=self.model,
                 **options,
-                max_tokens=2048,
+                max_tokens=20480,
                 messages=[
                     {
                         "role": "user",

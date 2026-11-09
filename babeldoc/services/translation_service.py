@@ -26,6 +26,7 @@ import os
 import io
 import fitz
 import base64
+import asyncio
 
 def base64_to_pdf(base64_str: str, output_path: Path) -> Path:
     """
@@ -85,6 +86,16 @@ class TranslationManager:
         self.doc_layout_model = DocLayoutModel.load_onnx()
         end_time = time.time()
         logger.info(f"加载布局模型耗时: {end_time - start_time} 秒")
+        #创建翻译器
+        self.translator = OpenAITranslator(
+            lang_in=config.lang_in,
+            lang_out=config.lang_out,
+            model=config.model,
+            base_url=config.base_url,
+            api_key=config.api_key,
+            ignore_cache=config.ignore_cache,
+        )
+        set_translate_rate_limiter(config.qps)
 
 
     async def _run_translation(self, file_path: Path, task_id: str, lang_in: str|None = None, lang_out: str|None = None):
@@ -99,23 +110,14 @@ class TranslationManager:
             task_output_dir = config.output_dir / task_id
             task_output_dir.mkdir(parents=True, exist_ok=True)
             
-            #创建翻译器
-            translator = OpenAITranslator(
-                lang_in=config.lang_in,
-                lang_out=config.lang_out,
-                model=config.model,
-                base_url=config.base_url,
-                api_key=config.api_key,
-                ignore_cache=config.ignore_cache,
-            )
-            set_translate_rate_limiter(config.qps)
+
             
             #构建翻译配置
             cfg = TranslationConfig(
                 debug=config.debug,
                 input_file=str(file_path),
                 output_dir=str(task_output_dir),
-                translator=translator,
+                translator=self.translator,
                 lang_in=lang_in or config.lang_in,
                 lang_out=lang_out or config.lang_out,
                 no_dual=False,   #生成双语
@@ -135,7 +137,8 @@ class TranslationManager:
             dual_output = None
             async for event in babeldoc_async_translate(cfg):
                 if event["type"] == "detected Scanned File":
-                    mineru_result = render_pdf(event["input_file"], task_output_dir)
+                    loop = asyncio.get_event_loop()
+                    mineru_result = await loop.run_in_executor(None, render_pdf, event["input_file"], task_output_dir, self.translator)
 
                     mono_output = mineru_result["mono_output"]
                     dual_output = mineru_result["dual_output"]
@@ -182,7 +185,8 @@ async def process_translation(request: PoInputRequest, ifywid: str, task_id: str
         pdf_path = base64_to_pdf(zdata.PICTURE, task_output_dir / f"picture_{task_id}.pdf")
 
         # 直接调用 mineru 翻译 TODO: 处理翻译结果
-        mineru_result = render_pdf(str(pdf_path), task_output_dir)
+        loop = asyncio.get_event_loop()
+        mineru_result = await loop.run_in_executor(None, render_pdf, str(pdf_path), task_output_dir, manager.translator)
         mono_output = mineru_result["mono_output"]
         dual_output = mineru_result["dual_output"]
 
