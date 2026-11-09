@@ -108,8 +108,11 @@ def rsa_decrypt(ciphertext_b64: str, private_key: RSAPrivateKey) -> str:
             plaintext_parts.append(decrypted)
         except Exception as e:
             raise ValueError(f"第{idx+1}个密文块解密失败: {e}") from e
-    
-    return b"".join(plaintext_parts).decode("utf-8")
+
+    try: 
+        return b"".join(plaintext_parts).decode("utf-8")
+    except Exception as e:
+        raise ValueError(f"RSA 解密编码失败: {e}") from e
 
 
 # TODO: try except
@@ -122,18 +125,21 @@ def rsa_encrypt(plaintext: str, public_key: RSAPublicKey) -> str:
     Returns:
         分段Base64 + OPERATES分隔符拼接的密文字符串
     """
-    plaintext_bytes = plaintext.encode("utf-8")
-    encrypted_blocks = []
-    
-    for i in range(0, len(plaintext_bytes), _MAX_ENCRYPT_CHUNK):
-        chunk = plaintext_bytes[i:i + _MAX_ENCRYPT_CHUNK]
-        encrypted_chunk = public_key.encrypt(chunk, _PADDING)
-        # 对齐Java Line78：每个块单独Base64编码，再拼分隔符
-        b64_block = base64.b64encode(encrypted_chunk).decode("utf-8")
-        encrypted_blocks.append(b64_block)
-    
-    # 用OPERATES拼接所有块的Base64字符串（对齐Java Line78）
-    return _OPERATES.join(encrypted_blocks)
+    try: 
+        plaintext_bytes = plaintext.encode("utf-8")
+        encrypted_blocks = []
+        
+        for i in range(0, len(plaintext_bytes), _MAX_ENCRYPT_CHUNK):
+            chunk = plaintext_bytes[i:i + _MAX_ENCRYPT_CHUNK]
+            encrypted_chunk = public_key.encrypt(chunk, _PADDING)
+            # 对齐Java Line78：每个块单独Base64编码，再拼分隔符
+            b64_block = base64.b64encode(encrypted_chunk).decode("utf-8")
+            encrypted_blocks.append(b64_block)
+        
+        # 用OPERATES拼接所有块的Base64字符串（对齐Java Line78）
+        return _OPERATES.join(encrypted_blocks)
+    except Exception as e:
+        raise ValueError(f"RSA 加密失败: {e}") from e
 
 
 def get_decrypt_private_key(SYSID: str) -> RSAPrivateKey:
