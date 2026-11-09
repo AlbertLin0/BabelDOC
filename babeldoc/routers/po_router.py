@@ -14,6 +14,7 @@ from babeldoc.utils.rsa import decrypt_data, encrypt_data
 from schemas.api.po_execptions import PoValidationError, PoErrorCode
 from app_devs import schedule, logger
 from config.config import verify_IFYWID
+from babeldoc.services.translation_service import manager
 
 router = APIRouter()
 
@@ -39,11 +40,11 @@ async def get_translate_result(request: PoInputRequestDescription) -> JSONRespon
 
     if zdata.TEXT is not None:
         logger.info("文本翻译：")
-        translated_text = zdata.TEXT
+        translated_text = manager.translator.do_translate(zdata.TEXT)
         response = ZDataResponse(
             JOBID=zdata.JOBID,
             CODE=PoErrorCode.SUCCESS.value,
-            MESSAGE="直接返回翻译结果",
+            MESSAGE="翻译成功",
             TEXT=translated_text,
         )
     else:
