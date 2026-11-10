@@ -272,6 +272,7 @@ class OpenAITranslator(BaseTranslator):
         before_sleep=before_sleep_log(logger, logging.WARNING),
     )
     def do_translate(self, text, rate_limit_params: dict|None = None) -> str:
+        logger.info("调用大模型：")
         options = {}
         if self.send_temperature:
             options.update(self.options)

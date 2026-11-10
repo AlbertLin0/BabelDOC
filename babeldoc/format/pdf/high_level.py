@@ -449,14 +449,22 @@ class MemoryMonitor:
 
 def fix_null_page_content(doc: Document) -> list[int]:
     # NOTE: 可能存在bug，从小到大删除 xref，索引会发生变化？
+    logger.debug(f"ss: {doc}")
     invalid_page = []
-    for x in range(len(doc)):
-        xref = doc[x].xref
-        if doc.xref_object(xref) == "null":
-            invalid_page.append(x)
-    for x in invalid_page:
-        doc.delete_page(x)
-        doc.insert_page(x)
+    logger.debug(len(doc))
+    try:
+        for x in range(len(doc)):
+            xref = doc[x].xref
+            if doc.xref_object(xref) == "null":
+                logger.debug(x)
+                invalid_page.append(x)
+        logger.debug("xxx")
+        for x in invalid_page:
+            doc.delete_page(x)
+            doc.insert_page(x)
+        logger.debug("xx")
+    except Exception: 
+        logger.debug("错误")
     return invalid_page
 
 
@@ -554,8 +562,11 @@ def do_translate(
         start_time = time.time()
         peak_memory_usage = 0
         with MemoryMonitor() as memory_monitor:
+            logger.warning(f"split strategy : {translation_config.split_strategy}")
             # Check if split translation is enabled
             if not translation_config.split_strategy:
+                logger.debug("xxx")
+                logger.info("1111")
                 result = _do_translate_single(pm, translation_config)
                 if result is None:
                     return None
@@ -875,10 +886,14 @@ def _do_translate_single(
             "input.decompressed.pdf",
         )
         # Fix null xref in PDF file
+        logger.debug(f"{output_path}")
         try:
             _ = fix_null_page_content(doc_input)
+            logger.debug("2")
             fix_filter(doc_input)
+            logger.debug("3")
             fix_null_xref(doc_input)
+            logger.debug("4")
         except Exception:
             logger.exception("auto fix failed, please check the pdf file")
         safe_save(doc_input, output_path, expand=True, pretty=True)

@@ -1,3 +1,7 @@
+import dotenv
+from pathlib import Path
+dotenv.load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+
 import os
 import json
 import uuid
@@ -8,7 +12,7 @@ import urllib.parse
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 from fastapi import FastAPI, UploadFile, HTTPException, BackgroundTasks
-from fastapi.responses import StreamingResponse, FileResponse
+from fastapi.responses import StreamingResponse, FileResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from babeldoc._mineru import render_pdf
 from babeldoc.format.pdf.high_level import init as babel_init
@@ -16,6 +20,8 @@ from babeldoc.format.pdf.high_level import async_translate as babeldoc_async_tra
 from babeldoc.translator.translator import OpenAITranslator, set_translate_rate_limiter
 from babeldoc.docvision.doclayout import DocLayoutModel
 from babeldoc.format.pdf.translation_config import TranslationConfig, WatermarkOutputMode
+from babeldoc.services.translation_service import manager as manager_test
+
 
 import logging
 logger = logging.getLogger("translation_service")
@@ -53,6 +59,14 @@ app.add_middleware(
         "Content-Disposition",
     ],
 )
+
+
+@app.get("/")
+@app.get("/pdf_translation_studio.html")
+async def serve_studio():
+    """托管翻译工作台页面，实现与 API 同源访问"""
+    html_path = Path(__file__).resolve().parent / "pdf_translation_studio.html"
+    return HTMLResponse(html_path.read_text(encoding="utf-8"))
 
 
 def sse_event(event_type: str, data: dict) -> str:
@@ -155,7 +169,7 @@ class TranslationManager:
             dual_output = None
             async for event in babeldoc_async_translate(cfg):
                 if event["type"] == "detected Scanned File":
-                    mineru_result = render_pdf(event["input_file"], task_output_dir)
+                    mineru_result = render_pdf(event["input_file"], task_output_dir, manager_test.translator)
 
                     mono_output = mineru_result["mono_output"]
                     dual_output = mineru_result["dual_output"]
@@ -266,7 +280,7 @@ async def translate_stream(
 
                 if event_type == "detected Scanned File":
                     logger.info("检测到扫描件，调用 MinerU 处理")
-                    mineru_result = render_pdf(event["input_file"], task_output_dir)
+                    mineru_result = render_pdf(event["input_file"], task_output_dir, manager_test.translator)
                     mono_output = mineru_result["mono_output"]
                     dual_output = mineru_result["dual_output"]
                     break

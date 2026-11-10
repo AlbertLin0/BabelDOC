@@ -7,7 +7,7 @@
 #   - "input.pdf"
 
 # Use debug logging level
-debug: false
+debug: true
 
 # Only download and verify required assets and model then exit
 warmup: false

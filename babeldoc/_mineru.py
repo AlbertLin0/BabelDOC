@@ -6,6 +6,7 @@ from babeldoc.config.config import get_config
 from mineru.types import MiddleJson
 from mineru.render import PdfLayout, PdfRenderOptions, RenderFormat, render
 from babeldoc.translator.translator import OpenAITranslator
+from babeldoc.app_devs import logger
 
 config = get_config()
 def parse_pdf(pdf_path: str) -> dict:
@@ -92,6 +93,7 @@ def render_pdf(input_file: str, task_output_dir: Path, translator: OpenAITransla
     translated_dict = []
     batch_size = 20
     for batch_start in range(0, len(need_translate), batch_size):
+        logger.info("新一批数据")
         batch = need_translate[batch_start:batch_start + batch_size]
         batch_prompt = json.dumps(batch, ensure_ascii=False)
         batch_result = json.loads(translator.do_translate(batch_prompt))

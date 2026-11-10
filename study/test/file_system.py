@@ -13,4 +13,4 @@ async def test_file_upload():
 
 if __name__ == "__main__":
     import asyncio
-    asyncio.run(main())
+    asyncio.run(test_file_upload())

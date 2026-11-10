@@ -111,10 +111,10 @@ class TranslationManager:
             task_output_dir.mkdir(parents=True, exist_ok=True)
             
 
-            
+            logger.info(f"debug mode is {config.debug}")
             #构建翻译配置
             cfg = TranslationConfig(
-                debug=config.debug,
+                debug=True,
                 input_file=str(file_path),
                 output_dir=str(task_output_dir),
                 translator=self.translator,
