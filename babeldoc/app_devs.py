@@ -5,7 +5,7 @@ from babeldoc.config.config import get_config
 from babeldoc.schedule.schedule import Schedule
 
 logger = logging.getLogger("数科调度翻译服务")
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 
 config = get_config()
 schedule = Schedule.get_instance()

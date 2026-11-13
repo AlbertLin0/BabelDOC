@@ -27,46 +27,117 @@ import io
 import fitz
 import base64
 import asyncio
+from PIL import Image, ImageOps
 
-def base64_to_pdf(base64_str: str, output_path: Path) -> Path:
+def base64_to_pdf(
+    base64_str: str,
+    output_path: Path,
+    default_dpi: float = 72.0,
+) -> Path:
     """
-    将 base64 编码的图片转换为 PDF 文件。
-    """
-    image_bytes = base64.b64decode(base64_str)
+    将 Base64 编码的图片转换为 PDF 文件。
 
-    from PIL import Image
-    image = Image.open(io.BytesIO(image_bytes))
-    dpi = image.info.get("dpi", (72, 72))
-    dpi_x, dpi_y = dpi[0], dpi[1] if len(dpi) > 1 else dpi[0]
-    # 处理 RGBA 模式（如有透明通道转为 RGB） AI 推荐做法
-    if image.mode == "RGBA":
-        # 创建白色背景
-        background = Image.new("RGB", image.size, (255, 255, 255))
-        background.paste(image, mask=image.split()[3])  # 使用 alpha 通道作为 mask
-        image = background
-    elif image.mode != "RGB":
+    Args:
+        base64_str: Base64 图片字符串，支持 Data URI 格式。
+        output_path: PDF 输出路径。
+        default_dpi: 图片缺少有效 DPI 信息时使用的默认 DPI。
+
+    Returns:
+        PDF 文件路径。
+    """
+    if not base64_str:
+        raise ValueError("Base64 图片数据不能为空")
+
+    # 1. 处理 Data URI 前缀
+    if base64_str.startswith("data:") and "," in base64_str:
+        base64_str = base64_str.split(",", 1)[1]
+
+    # 2. Base64 解码
+    try:
+        image_bytes = base64.b64decode(base64_str, validate=True)
+    except Exception as e:
+        raise ValueError(f"Base64 解码失败: {e}") from e
+
+    # 3. 加载图片
+    try:
+        image = Image.open(io.BytesIO(image_bytes))
+        image.load()
+    except Exception as e:
+        raise ValueError(f"图片加载失败: {e}") from e
+
+    # 4. 处理 EXIF 方向
+    image = ImageOps.exif_transpose(image)
+
+    # 5. 获取 DPI
+    dpi = image.info.get("dpi") or (default_dpi, default_dpi)
+
+    try:
+        dpi_x = float(dpi[0]) if dpi[0] else default_dpi
+        dpi_y = float(dpi[1]) if len(dpi) > 1 and dpi[1] else dpi_x
+    except (TypeError, ValueError, IndexError):
+        dpi_x = dpi_y = default_dpi
+
+    if dpi_x <= 0:
+        dpi_x = default_dpi
+    if dpi_y <= 0:
+        dpi_y = default_dpi
+
+    # 6. 统一转换为 RGB，透明区域填充白色
+    if image.mode in ("RGBA", "LA") or (
+        image.mode == "P" and "transparency" in image.info
+    ):
+        image = image.convert("RGBA")
+        background = Image.new("RGBA", image.size, (255, 255, 255, 255))
+        image = Image.alpha_composite(background, image).convert("RGB")
+    else:
         image = image.convert("RGB")
 
-    img_buffer = io.BytesIO()
-    image.save(img_buffer, format="PNG")
-    img_buffer.seek(0)
-
-    doc = fitz.open()  
     img_width, img_height = image.size
 
-    # 页面大小 = 图片大小（单位：像素 → 点，72 DPI）NOTE: DPI 应该作为超参数设置，默认值为 72 DPI
+    # 7. 计算 PDF 页面尺寸（PDF 单位：point）
     page_width_pt = img_width / dpi_x * 72
     page_height_pt = img_height / dpi_y * 72
-    page = doc.new_page(width=page_width_pt, height=page_height_pt)
 
-    # 将图片嵌入页面（填满整页）
-    page.insert_image(
-        fitz.Rect(0, 0, img_width, img_height),
-        stream=img_buffer.read(),
+    if page_width_pt <= 0 or page_height_pt <= 0:
+        raise ValueError("计算得到的 PDF 页面尺寸无效")
+
+    # 8. 将图片编码为 PNG
+    img_buffer = io.BytesIO()
+    image.save(img_buffer, format="PNG")
+    img_bytes = img_buffer.getvalue()
+
+    # 9. 创建 PDF 并插入图片
+    doc = fitz.open()
+
+    try:
+        page = doc.new_page(
+            width=page_width_pt,
+            height=page_height_pt,
+        )
+
+        page.insert_image(
+            page.rect,
+            stream=img_bytes,
+        )
+
+        output_path = Path(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        doc.save(str(output_path), garbage=4, deflate=True)
+
+    finally:
+        doc.close()
+
+    logger.info(
+        "图片转 PDF 成功: size=%s, dpi=(%.2f, %.2f), "
+        "page_size=(%.2f, %.2f), output=%s",
+        image.size,
+        dpi_x,
+        dpi_y,
+        page_width_pt,
+        page_height_pt,
+        output_path,
     )
-
-    doc.save(str(output_path))
-    doc.close()
 
     return output_path
 
@@ -164,7 +235,8 @@ class TranslationManager:
             # self.results[task_id] = (mono_output, dual_output)
             
         except Exception as e:
-            logger.error(f"翻译失败: {str(e)}")
+            logger.exception(e)
+            logger.error(f"TRANSMANGER 翻译失败: {str(e)}")
             raise
         finally:
             #清理上传的临时文件
@@ -182,6 +254,7 @@ async def process_translation(request: PoInputRequest, ifywid: str, task_id: str
     task_output_dir.mkdir(parents=True, exist_ok=True)
     if zdata.PICTURE is not None:
         # 转换图片为 PDF，返回PDF路径
+        logger.debug(f"图片处理")
         pdf_path = base64_to_pdf(zdata.PICTURE, task_output_dir / f"picture_{task_id}.pdf")
 
         # 直接调用 mineru 翻译 TODO: 处理翻译结果
@@ -202,6 +275,7 @@ async def process_translation(request: PoInputRequest, ifywid: str, task_id: str
         new_FILE_DOCID = opentext_response.docuId
     elif zdata.FILE_ID is not None:
         # file download 
+        logger.debug(f"文件处理")
         if zdata.FILE_ARCID is None or zdata.FILE_DOCID is None:
             raise ValueError("对于 file 处理 FILE_ARCID 和 FILE_DOCID 不能为空")
 

@@ -54,10 +54,12 @@ async def file_download(ArcId: str, DocId: str, file_path: str) -> None:
             response = await client.get(redirect_url)
 
         response.raise_for_status()
+        logger.debug(f"下载的文件内容：{response.content}")
 
         if not file_path.endswith(".pdf"):
             raise FileSystemDownloadError("文件路径必须以 .pdf 结尾")
 
         if response.status_code == 200:
             with open(file_path, "wb") as f:
+                logger.info(f"保存文件到了：{file_path}")
                 f.write(response.content)

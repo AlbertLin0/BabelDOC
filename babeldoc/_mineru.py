@@ -93,11 +93,22 @@ def render_pdf(input_file: str, task_output_dir: Path, translator: OpenAITransla
     translated_dict = []
     batch_size = 20
     for batch_start in range(0, len(need_translate), batch_size):
-        logger.info("新一批数据")
-        batch = need_translate[batch_start:batch_start + batch_size]
-        batch_prompt = json.dumps(batch, ensure_ascii=False)
-        batch_result = json.loads(translator.do_translate(batch_prompt))
-        translated_dict.extend(batch_result)
+        try:
+            logger.info("新一批数据")
+            batch = need_translate[batch_start:batch_start + batch_size]
+            batch_prompt = json.dumps(batch, ensure_ascii=False)
+            text = translator.do_translate(batch_prompt)
+            logger.debug(f"大模型返回内容：{text}")
+            if : 
+                logger.warning(f"大模型返回内容为空：{text}")
+            batch_result = json.loads(text)
+            translated_dict.extend(batch_result)
+        except Exception as e: 
+            logger.error(f"mineru 翻译出现错误")
+            logger.debug(f"记录batch：{batch}")
+            logger.debug(f"记录text: {text}")
+            logger.debug(f"记录text类型：{type(text)}")
+            
 
     # 递归写回翻译结果，遍历顺序与 recursive 完全一致
     def write_back(obj, trans_iter):

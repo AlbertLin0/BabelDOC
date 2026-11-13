@@ -272,7 +272,7 @@ class OpenAITranslator(BaseTranslator):
         before_sleep=before_sleep_log(logger, logging.WARNING),
     )
     def do_translate(self, text, rate_limit_params: dict|None = None) -> str:
-        logger.info("调用大模型：")
+        logger.debug("调用大模型 >>>>> ")
         options = {}
         if self.send_temperature:
             options.update(self.options)
@@ -284,13 +284,16 @@ class OpenAITranslator(BaseTranslator):
             extra_body=self.extra_body,
         )
         self.update_token_count(response)
+        logger.debug("大模型内容返回 <<<<< ")
+        if response.choices[0].message.reasoning is not None: 
+            logger.debug(f"大模型返回reasoning content结果 {response.choices[0].message.reasoning}")
         return response.choices[0].message.content.strip()
 
     def prompt(self, text) -> List[ChatCompletionMessageParam]:
         return [
             {
                 "role": "system",
-                "content": f"You are a professional,authentic machine translation engine. I will give you a dict type input, translate it into {self.lang_out}.",
+                "content": f"You are a professional,authentic machine translation engine. I will give you a dict type input, translate it into {self.lang_out}. then return dict type output",
             },
             {
                 "role": "user",
