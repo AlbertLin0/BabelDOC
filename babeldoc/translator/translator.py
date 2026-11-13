@@ -7,7 +7,7 @@ from abc import ABC
 from abc import abstractmethod
 from typing import List 
 from openai.types.chat import ChatCompletionMessageParam
-
+import json
 import httpx
 import openai
 from tenacity import before_sleep_log
@@ -293,12 +293,30 @@ class OpenAITranslator(BaseTranslator):
         return [
             {
                 "role": "system",
-                "content": f"You are a professional,authentic machine translation engine. I will give you a dict type input, translate it into {self.lang_out}. then return dict type output",
+                "content": (
+                    "You are a professional, accurate translation engine. "
+                    "The user input is a JSON array of strings. "
+                    "Each element may be in any language: Chinese, Spanish, Thai, Pinyin, English, etc. "
+                    "You must translate each element in the array one by one into {self.lang_out}. "
+                    "Rules:\n"
+                    "1. Keep the order strictly the same as input.\n"
+                    "2. The output MUST be a JSON array only.\n"
+                    "3. The length of output array must equal the length of input array, one-to-one correspondence.\n"
+                    "4. For proper nouns, abbreviations, terms that do not need translation, keep the original text.\n"
+                    "5. Do NOT add any explanation, notes, markdown, extra text, ```json fence.\n"
+                    "6. Do NOT merge or split elements. Empty / blank input element should return empty string in the corresponding position.\n"
+                    "7. Automatically identify the source language of each item. Chinese Pinyin should be translated into target language (not kept as pinyin). Spanish, Thai and other languages are also translated into the target language."
+                )
             },
             {
                 "role": "user",
-                "content": f";; Treat next line as plain text input and translate it into {self.lang_out}, output translation ONLY. If translation is unnecessary (e.g. proper nouns), return the original text. NO explanations. NO notes. Input:\n\n{text}",
-            },
+                "content": (
+                    f"Translate every item in the following JSON array into {self.lang_out}. "
+                    "Auto detect source language for each item. Spanish, Thai and other languages all need translation. "
+                    "Output ONLY the JSON array, no other content.\n"
+                    f"Input array:\n{json.dumps(text, ensure_ascii=False)}"
+                )
+            }
         ]
 
     @retry(

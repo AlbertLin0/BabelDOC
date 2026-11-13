@@ -9,6 +9,20 @@ from babeldoc.translator.translator import OpenAITranslator
 from babeldoc.app_devs import logger
 
 config = get_config()
+
+def clean_llm_json_output(raw: str) -> str:
+    raw = raw.strip()
+    # 移除 ```json 开头和末尾 ```
+    if raw.startswith("```json"):
+        raw = raw.removeprefix("```json")
+    elif raw.startswith("```"):
+        raw = raw.removeprefix("```")
+    if raw.endswith("```"):
+        raw = raw.removesuffix("```")
+    raw = raw.strip().lstrip("\ufeff")
+    return raw
+
+
 def parse_pdf(pdf_path: str) -> dict:
     """调用远程 MinerU API，获取解析任务结果。"""
     url = f"{config.mineru_base_url}/v1/file_parse"
@@ -95,34 +109,49 @@ def render_pdf(input_file: str, task_output_dir: Path, translator: OpenAITransla
     for batch_start in range(0, len(need_translate), batch_size):
         try:
             logger.info("新一批数据")
+            
             batch = need_translate[batch_start:batch_start + batch_size]
             batch_prompt = json.dumps(batch, ensure_ascii=False)
             text = translator.do_translate(batch_prompt)
-            logger.debug(f"大模型返回内容：{text}")
-            if : 
-                logger.warning(f"大模型返回内容为空：{text}")
-            batch_result = json.loads(text)
-            translated_dict.extend(batch_result)
-        except Exception as e: 
-            logger.error(f"mineru 翻译出现错误")
-            logger.debug(f"记录batch：{batch}")
-            logger.debug(f"记录text: {text}")
-            logger.debug(f"记录text类型：{type(text)}")
             
+            logger.debug(f"大模型返回内容：{text}")
+            if not text.startswith("["):
+                logger.warning(f"大模型返回内容非dict列表：{text}")
+                text = clean_llm_json_output(text)
+                logger.warning(f"修复后的text为：{text}")
 
+            batch_result = json.loads(text)
+
+            if not( len(batch_result) == len(batch) ):
+                logger.debug(f"数组长度不匹配！src_len={len(batch)}, output_len={batch_result}")
+                logger.debug(f"src: {batch}")
+                logger.debug(f"output: {batch_result}")
+                raise "大模型返回内容与需要翻译内容不匹配！"
+
+            translated_dict.extend(batch_result)
+
+        except Exception as e: 
+            logger.error(f"mineru 翻译出现错误:{e}")
+            
+    logger.debug(f"write_back 开始")
     # 递归写回翻译结果，遍历顺序与 recursive 完全一致
     def write_back(obj, trans_iter):
         if isinstance(obj.content, str):
-            obj.content = next(trans_iter)
+            tmp = next(trans_iter)
+            obj.content = tmp
         else:
             for item in obj.content:
                 write_back(item, trans_iter)
+    try: 
+        trans_iter = iter(translated_dict)
+        for page in middle_json.pages:
+            for block in page.blocks:
+                for item in block.content:
+                    write_back(item, trans_iter)
+    except Exception as e: 
+        logger.error(f"write_back 出现错误：{e}")
 
-    trans_iter = iter(translated_dict)
-    for page in middle_json.pages:
-        for block in page.blocks:
-            for item in block.content:
-                write_back(item, trans_iter)
+
 
     pdf_bytes = render(
         middle_json,
