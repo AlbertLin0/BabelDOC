@@ -219,32 +219,6 @@ EMBEDDING_FONT_METADATA = {
         "sha3_256": "7dfe2bbf97dc04c852d1223b220b63430e6ad03b0dbb28ebe6328a20a2d45eb8",
         "size": 629024,
     },
-    "NotoSansThai-Bold.ttf": {
-        "ascent": 1.061,
-        "bold": 1,
-        "descent": -0.45,
-        "encoding_length": 2,
-        "file_name": "NotoSansThai-Bold.ttf",
-        "font_name": "Noto Sans Thai",
-        "italic": 0,
-        "monospace": 0,
-        "serif": 0,
-        "sha3_256": "249831038a1e75d9eabb1217ab067c2b2bee6690f458510cc21b68d9f44724dd",
-        "size": 47480,
-    },
-    "NotoSansThai-Regular.ttf": {
-        "ascent": 1.061,
-        "bold": 0,
-        "descent": -0.45,
-        "encoding_length": 2,
-        "file_name": "NotoSansThai-Regular.ttf",
-        "font_name": "Noto Sans Thai",
-        "italic": 0,
-        "monospace": 0,
-        "serif": 0,
-        "sha3_256": "5e1ffe40b38e170275e7b6aa7398bab2b0718aa7931ed3df93d0924a228c931c",
-        "size": 47484,
-    },
     "NotoSerif-Bold.ttf": {
         "ascent": 1069,
         "bold": 1,
@@ -296,32 +270,6 @@ EMBEDDING_FONT_METADATA = {
         "serif": 1,
         "sha3_256": "c2bbe984e65bafd3bcd38b3cb1e1344f3b7b79d6beffc7a3d883b57f8358559d",
         "size": 504932,
-    },
-    "NotoSerifThai-Bold.ttf": {
-        "ascent": 1.064,
-        "bold": 1,
-        "descent": -0.534,
-        "encoding_length": 2,
-        "file_name": "NotoSerifThai-Bold.ttf",
-        "font_name": "Noto Serif Thai",
-        "italic": 0,
-        "monospace": 0,
-        "serif": 1,
-        "sha3_256": "22bcb68163703f3b69e93f65305d127dd4fa856f65ea0570e40e0f8689ecc301",
-        "size": 61516,
-    },
-    "NotoSerifThai-Regular.ttf": {
-        "ascent": 1.064,
-        "bold": 0,
-        "descent": -0.534,
-        "encoding_length": 2,
-        "file_name": "NotoSerifThai-Regular.ttf",
-        "font_name": "Noto Serif Thai",
-        "italic": 0,
-        "monospace": 0,
-        "serif": 1,
-        "sha3_256": "db300b1727413940ddc64af6a64d0629de08558a276777fce8d42ad89ad4c649",
-        "size": 61428,
     },
     "SourceHanSansCN-Bold.ttf": {
         "ascent": 1160,
@@ -1423,26 +1371,6 @@ EN_FONT_FAMILY = {
     ],
 }
 
-TH_FONT_FAMILY = {
-    "script": [
-        "NotoSansThai-Regular.ttf",
-        "NotoSansThai-Bold.ttf",
-    ],
-    "normal": [
-        "NotoSerifThai-Regular.ttf",
-        "NotoSerifThai-Bold.ttf",
-        "NotoSansThai-Regular.ttf",
-        "NotoSansThai-Bold.ttf",
-    ],
-    "fallback": [
-        "NotoSansThai-Regular.ttf",
-        "NotoSansThai-Bold.ttf",
-    ],
-    "base": [
-        "NotoSansThai-Regular.ttf",
-    ],
-}
-
 ALL_FONT_FAMILY = {
     "CN": CN_FONT_FAMILY,
     "TW": TW_FONT_FAMILY,
@@ -1451,7 +1379,6 @@ ALL_FONT_FAMILY = {
     "JP": JP_FONT_FAMILY,
     "EN": EN_FONT_FAMILY,
     "JA": JP_FONT_FAMILY,
-    "TH": TH_FONT_FAMILY,
 }
 
 
@@ -1499,8 +1426,6 @@ def get_font_family(lang_code: str):
         font_family = TW_FONT_FAMILY
     elif "EN" in lang_code:
         font_family = EN_FONT_FAMILY
-    elif "TH" in lang_code:
-        font_family = TH_FONT_FAMILY
     elif "CN" in lang_code:
         font_family = CN_FONT_FAMILY
     else:

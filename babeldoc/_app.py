@@ -224,7 +224,6 @@ class TranslationManager:
 async def translate_stream(
     file: UploadFile,
     background_tasks: BackgroundTasks,
-    target_lang: str | None
 ):
     """流式翻译接口 - 通过 SSE 实时推送翻译进度事件"""
     if not file.filename or not file.filename.lower().endswith(".pdf"):
@@ -252,16 +251,13 @@ async def translate_stream(
     )
     set_translate_rate_limiter(TRANSLATOR_CONFIG["qps"])
 
-    if target_lang is None: 
-        target_lang = TRANSLATOR_CONFIG["lang_out"]
-
     cfg = TranslationConfig(
         debug=True,
         input_file=str(upload_path),
         output_dir=str(task_output_dir),
         translator=translator,
         lang_in=TRANSLATOR_CONFIG["lang_in"],
-        lang_out=target_lang,
+        lang_out=TRANSLATOR_CONFIG["lang_out"],
         no_dual=False,
         no_mono=False,
         qps=TRANSLATOR_CONFIG["qps"],
@@ -284,7 +280,7 @@ async def translate_stream(
 
                 if event_type == "detected Scanned File":
                     logger.info("检测到扫描件，调用 MinerU 处理")
-                    mineru_result = render_pdf(event["input_file"], task_output_dir, manager_test.translator, target_lang=target_lang)
+                    mineru_result = render_pdf(event["input_file"], task_output_dir, manager_test.translator)
                     mono_output = mineru_result["mono_output"]
                     dual_output = mineru_result["dual_output"]
                     break
