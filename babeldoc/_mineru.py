@@ -16,7 +16,7 @@ from mineru.render import (
 )
 from babeldoc.translator.translator import OpenAITranslator
 from babeldoc.app_devs import logger
-from mineru.structures import TextSpan, PageBlock
+
 
 config = get_config()
 
