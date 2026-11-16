@@ -15,7 +15,6 @@ from schemas.api.po_execptions import PoValidationError, PoErrorCode
 from app_devs import schedule, logger
 from config.config import verify_IFYWID
 from babeldoc.services.translation_service import manager
-
 import re
 
 def safe_join_json_array(raw: str, sep="，") -> str:
@@ -41,7 +40,6 @@ def safe_join_json_array(raw: str, sep="，") -> str:
     except json.JSONDecodeError:
         # 解析失败，降级返回原始清洗后的内容
         return cleaned
-
 router = APIRouter()
 
 class MoveTaskRequest(BaseModel):
