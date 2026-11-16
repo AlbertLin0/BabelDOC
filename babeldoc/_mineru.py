@@ -108,13 +108,12 @@ def render_pdf(input_file: str, task_output_dir: Path, translator: OpenAITransla
     batch_size = 20
     for batch_start in range(0, len(need_translate), batch_size):
         try:
-            logger.info("新一批数据")
+            logger.debug("新一批数据")
             
             batch = need_translate[batch_start:batch_start + batch_size]
             batch_prompt = json.dumps(batch, ensure_ascii=False)
             text = translator.do_translate(batch_prompt)
             
-            logger.debug(f"大模型返回内容：{text}")
             if not text.startswith("["):
                 logger.warning(f"大模型返回内容非dict列表：{text}")
                 text = clean_llm_json_output(text)
@@ -138,6 +137,9 @@ def render_pdf(input_file: str, task_output_dir: Path, translator: OpenAITransla
     def write_back(obj, trans_iter):
         if isinstance(obj.content, str):
             tmp = next(trans_iter)
+            # 修复空问题
+            if tmp == "":
+                tmp = " "
             obj.content = tmp
         else:
             for item in obj.content:
@@ -145,6 +147,7 @@ def render_pdf(input_file: str, task_output_dir: Path, translator: OpenAITransla
     try: 
         trans_iter = iter(translated_dict)
         for page in middle_json.pages:
+            logger.debug("new page")
             for block in page.blocks:
                 for item in block.content:
                     write_back(item, trans_iter)

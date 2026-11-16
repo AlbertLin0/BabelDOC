@@ -16,6 +16,32 @@ from app_devs import schedule, logger
 from config.config import verify_IFYWID
 from babeldoc.services.translation_service import manager
 
+import re
+
+def safe_join_json_array(raw: str, sep="，") -> str:
+    """
+    把JSON数组字符串转成用sep连接的文本
+    失败时返回原文本
+    """
+    if not raw or not raw.strip():
+        return ""
+    # 清洗markdown代码块标记
+    cleaned = re.sub(r"```[^\n]*\n?", "", raw)
+    cleaned = re.sub(r"\n?```", "", cleaned)
+    cleaned = cleaned.strip().lstrip("\ufeff")
+    try:
+        arr = json.loads(cleaned)
+        if isinstance(arr, list):
+            # 过滤空元素
+            arr = [i for i in arr if i and i.strip()]
+            return sep.join(arr)
+        else:
+            # 不是数组，直接返回原文
+            return cleaned
+    except json.JSONDecodeError:
+        # 解析失败，降级返回原始清洗后的内容
+        return cleaned
+
 router = APIRouter()
 
 class MoveTaskRequest(BaseModel):
@@ -41,6 +67,8 @@ async def get_translate_result(request: PoInputRequestDescription) -> JSONRespon
     if zdata.TEXT is not None:
         logger.info("文本翻译：")
         translated_text = manager.translator.do_translate(zdata.TEXT)
+        translated_text = safe_join_json_array(translated_text)
+        logger.debug(f"返回字符串：{translated_text}, TYPE: {type(translated_text)}")
         response = ZDataResponse(
             JOBID=zdata.JOBID,
             CODE=PoErrorCode.SUCCESS.value,
@@ -56,7 +84,7 @@ async def get_translate_result(request: PoInputRequestDescription) -> JSONRespon
             CODE=PoErrorCode.SUCCESS.value,
             MESSAGE=f"任务已提交，task_id={task.task_id}",
         )
-
+    logger.debug(f"加密后的密：{encrypt_data(response, request.IS_INPUT.SYSID)}")
     return JSONResponse(
         content=jsonable_encoder(
             PoOutputResponseDescription(
