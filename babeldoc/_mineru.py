@@ -7,7 +7,6 @@ from mineru.types import MiddleJson
 from mineru.render import PdfLayout, PdfRenderOptions, RenderFormat, render
 from babeldoc.translator.translator import OpenAITranslator
 from babeldoc.app_devs import logger
-from mineru.structures import TextSpan, PageBlock
 
 config = get_config()
 
@@ -24,26 +23,6 @@ def clean_llm_json_output(raw: str) -> str:
     return raw
 
 
-
-def inject_page_break_after_each_source_page(mj):
-    """
-    mj: middle_json 对象
-    在每一个源page的blocks末尾，插入分页块；最后一页不插
-    """
-    new_pages = []
-    for idx, page in enumerate(mj.pages):
-        # 复制当前page
-        new_page = page.model_copy(deep=True)
-        # 不是最后一页，追加分页块
-        if idx != len(mj.pages) - 1:
-            # 方案1：优先用分页标记span（适配大多数MinerU 4.x）
-            # 这个span本身不输出可见文字，渲染器遇到它触发分页
-            pb_span = TextSpan(content="\u000c") # \f 换页符 form feed
-            pb_block = PageBlock(content=[pb_span])
-            new_page.blocks.append(pb_block)
-        new_pages.append(new_page)
-    mj.pages = new_pages
-    return mj
 
 def parse_pdf(pdf_path: str) -> dict:
     """调用远程 MinerU API，获取解析任务结果。"""
@@ -177,8 +156,6 @@ def render_pdf(input_file: str, task_output_dir: Path, translator: OpenAITransla
         logger.error(f"write_back 出现错误：{e}")
 
 
-
-    middle_json = inject_page_break_after_each_source_page(middle_json)
     pdf_bytes = render(
         middle_json,
         RenderFormat.PDF,
