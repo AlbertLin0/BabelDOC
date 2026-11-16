@@ -74,7 +74,7 @@ def download_middle_json(result: dict) -> dict:
     )
 
 
-def render_pdf(input_file: str, task_output_dir: Path, translator: OpenAITranslator, target_lang: str|None = None) -> dict:  
+def render_pdf(input_file: str, task_output_dir: Path, translator: OpenAITranslator) -> dict:  
     """
     parse_pdf 可以改为异步执行，
     但 render 函数是同步的，所以该函数需要放在线程池中执行。
@@ -113,7 +113,7 @@ def render_pdf(input_file: str, task_output_dir: Path, translator: OpenAITransla
             
             batch = need_translate[batch_start:batch_start + batch_size]
             batch_prompt = json.dumps(batch, ensure_ascii=False)
-            text = translator.do_translate(batch_prompt, lang_out=target_lang)
+            text = translator.do_translate(batch_prompt)
             
             if not text.startswith("["):
                 logger.warning(f"大模型返回内容非dict列表：{text}")
