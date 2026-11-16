@@ -77,6 +77,7 @@ async def get_translate_result(request: PoInputRequestDescription) -> JSONRespon
                 request=request,  # 携带原始请求对象，供异常处理器使用
             )
         target_lang_name = LangMapping.get_english_name(zdata.TARGET_LANG.strip())
+        logger.debug(f"目标语言 >>>> {target_lang_name}")
             
         translated_text = manager.translator.do_translate(zdata.TEXT, lang_out=target_lang_name)
         translated_text = safe_join_json_array(translated_text)

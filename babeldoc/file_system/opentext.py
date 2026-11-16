@@ -61,4 +61,5 @@ async def file_download(ArcId: str, DocId: str, file_path: str) -> None:
         if response.status_code == 200:
             with open(file_path, "wb") as f:
                 logger.info(f">>>> >>>> 保存文件到了：>>>>>{file_path}")
+                logger.info(f">>>> 前200字节是：{response.content[:200]}") # for debug
                 f.write(response.content)

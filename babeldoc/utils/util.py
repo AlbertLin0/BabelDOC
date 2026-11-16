@@ -68,4 +68,8 @@ class LangMapping():
     
     @classmethod
     def get_english_name(cls, code: str):
-        return cls.MAP_ENG.get(code, cls.MAP_ENG.get(cls.get_default_lang(), "zh"))
+        name = cls.MAP_ENG.get(code)
+        if name is not None:
+            return name
+        # 找不到再调用默认语言，只在缺失时才执行
+        return cls.MAP_ENG.get(cls.get_default_lang(), "zh")

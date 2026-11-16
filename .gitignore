@@ -54,3 +54,8 @@ temp.jpg
 
 *.crt
 *.pem
+*.jpg
+*.zip
+*.html
+*.csv
+*.log
