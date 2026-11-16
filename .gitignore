@@ -54,3 +54,5 @@ temp.jpg
 
 *.crt
 *.pem
+*.jpg
+*.zip
