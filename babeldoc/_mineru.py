@@ -1,31 +1,90 @@
+
 import json
 import requests
+import fitz
+import zipfile
 
 from pathlib import Path
+
 from babeldoc.config.config import get_config
 from mineru.types import MiddleJson
-from mineru.render import PdfLayout, PdfRenderOptions, RenderFormat, render
+from mineru.render import (
+    PdfLayout,
+    PdfRenderOptions,
+    RenderFormat,
+    render,
+)
 from babeldoc.translator.translator import OpenAITranslator
 from babeldoc.app_devs import logger
+from mineru.structures import TextSpan, PageBlock
 
 config = get_config()
 
-def clean_llm_json_output(raw: str) -> str:
-    raw = raw.strip()
-    # 移除 ```json 开头和末尾 ```
-    if raw.startswith("```json"):
-        raw = raw.removeprefix("```json")
-    elif raw.startswith("```"):
-        raw = raw.removeprefix("```")
-    if raw.endswith("```"):
-        raw = raw.removesuffix("```")
-    raw = raw.strip().lstrip("\ufeff")
-    return raw
+from pathlib import Path
 
+
+def attach_image_paths(middle_json, assets_dir: Path):
+    """
+    将 MinerU ZIP 中的图片资源路径关联到 MiddleJson 的 ImageBodyBlock。
+
+    图片命名格式：
+        images/page_{page_idx}_image_{block_index}.jpg
+    """
+    assets_dir = assets_dir.resolve()
+
+    attached_count = 0
+
+    for page_idx, page in enumerate(middle_json.pages):
+        for block in page.blocks:
+            if getattr(block.type, "value", block.type) != "image":
+                continue
+
+            for image_body in block.content:
+                if getattr(image_body.type, "value", image_body.type) != "image_body":
+                    continue
+
+                relative_path = (
+                    f"images/page_{page_idx}_image_{block.index}.jpg"
+                )
+
+                image_path = assets_dir / relative_path
+
+                if not image_path.is_file():
+                    raise FileNotFoundError(
+                        f"MinerU 图片资源不存在: {image_path}"
+                    )
+
+                # 将相对路径写入 MiddleJson
+                image_body.image_path = relative_path
+
+                attached_count += 1
+
+                print(
+                    f"[图片资源关联] "
+                    f"page={page_idx}, "
+                    f"block={block.index}, "
+                    f"path={relative_path}"
+                )
+
+    print(f"共关联 {attached_count} 张图片")
+def clean_llm_json_output(raw: str) -> str:
+    """清理模型返回的 JSON Markdown 包装。"""
+    raw = raw.strip()
+
+    if raw.startswith("```"):
+        lines = raw.splitlines()
+        if lines:
+            lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        raw = "\n".join(lines)
+
+    return raw.strip().lstrip("\ufeff")
 
 
 def parse_pdf(pdf_path: str) -> dict:
     """调用远程 MinerU API，获取解析任务结果。"""
+
     url = f"{config.mineru_base_url}/v1/file_parse"
 
     params = {
@@ -33,7 +92,7 @@ def parse_pdf(pdf_path: str) -> dict:
         "wait_timeout": 300,
         "tier": "standard",
         "ocr_mode": "ocr",
-        "output_formats": ["middle_json"],
+        "output_formats": ["middle_json", "zip"],
     }
 
     with open(pdf_path, "rb") as f:
@@ -54,119 +113,309 @@ def parse_pdf(pdf_path: str) -> dict:
     return response.json()
 
 
-def download_middle_json(result: dict) -> dict:
-    """根据解析结果下载 middle_json 文件。"""
+def download_mineru_outputs(
+    result: dict,
+    output_dir: Path,
+):
+    """
+    下载 MinerU 的 MiddleJson 和 ZIP 资源包。
+
+    返回：
+        middle_json_raw: MiddleJson 原始数据
+        assets_dir: 解压后的资源目录
+    """
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    middle_json_raw = None
+    zip_path = None
+
     for item in result.get("files", []):
         output_files = item.get("output_files") or {}
-        middle_json_info = output_files.get("middle_json")
 
-        if middle_json_info and middle_json_info.get("file_id"):
-            file_id = middle_json_info["file_id"]
-            url = f"{config.mineru_base_url}/v1/files/{file_id}/content"
+        # 下载 MiddleJson
+        middle_info = output_files.get("middle_json")
+
+        if middle_info and middle_info.get("file_id"):
+            file_id = middle_info["file_id"]
+
+            url = (
+                f"{config.mineru_base_url}"
+                f"/v1/files/{file_id}/content"
+            )
 
             response = requests.get(url, timeout=120)
             response.raise_for_status()
-            return response.json()
 
-    raise RuntimeError(
-        "没有找到 middle_json 文件。"
-        "请检查任务是否完成，以及 API 是否返回了 output_files.middle_json。"
-    )
+            middle_json_raw = response.json()
+
+        # 下载 ZIP
+        zip_info = output_files.get("zip")
+
+        if zip_info and zip_info.get("file_id"):
+            file_id = zip_info["file_id"]
+
+            url = (
+                f"{config.mineru_base_url}"
+                f"/v1/files/{file_id}/content"
+            )
+
+            response = requests.get(url, timeout=300)
+            response.raise_for_status()
+
+            zip_path = output_dir / "mineru_result.zip"
+            zip_path.write_bytes(response.content)
+
+    if middle_json_raw is None:
+        raise RuntimeError("MinerU 没有返回 middle_json")
+
+    if zip_path is None:
+        raise RuntimeError("MinerU 没有返回 zip 文件")
+
+    # 解压 ZIP
+    assets_dir = output_dir / "mineru_assets"
+    assets_dir.mkdir(parents=True, exist_ok=True)
+
+    with zipfile.ZipFile(zip_path, "r") as zf:
+        assets_root = assets_dir.resolve()
+
+        # ZIP 路径安全检查
+        for info in zf.infolist():
+            target = (assets_dir / info.filename).resolve()
+
+            if not target.is_relative_to(assets_root):
+                raise ValueError(
+                    f"ZIP 中存在非法路径：{info.filename}"
+                )
+
+        zf.extractall(assets_dir)
+
+    logger.info(f"MinerU 图片资源解压完成：{assets_dir}")
+
+    return middle_json_raw, assets_dir
 
 
-def render_pdf(input_file: str, task_output_dir: Path, translator: OpenAITranslator, target_lang: str|None = None) -> dict:  
+def create_asset_resolver(assets_dir: Path):
+    assets_root = assets_dir.resolve()
+
+    def asset_resolver(relative_path: str) -> bytes:
+        print(f"[asset_resolver] 请求资源: {relative_path!r}")
+
+        image_path = (assets_root / relative_path).resolve()
+
+        print(f"[asset_resolver] 实际路径: {image_path}")
+        print(f"[asset_resolver] 文件存在: {image_path.is_file()}")
+
+        if not image_path.is_relative_to(assets_root):
+            raise ValueError(f"非法资源路径: {relative_path}")
+
+        if not image_path.is_file():
+            raise FileNotFoundError(
+                f"图片资源不存在: {relative_path}"
+            )
+
+        return image_path.read_bytes()
+
+    return asset_resolver
+
+
+def recursive_text(obj):
     """
-    parse_pdf 可以改为异步执行，
-    但 render 函数是同步的，所以该函数需要放在线程池中执行。
+    递归提取 InlineSpan 中的文本。
     """
 
-    mineru_result = parse_pdf(input_file)
-    middle_json_raw = download_middle_json(mineru_result)
-    middle_json = MiddleJson.from_json(
-        json.dumps(middle_json_raw, ensure_ascii=False)
-    )
+    content = getattr(obj, "content", None)
 
-    def recursive(obj) -> list: 
-        # NOTE: need test
-        res = []
+    if isinstance(content, str):
+        yield obj
 
-        if isinstance(obj.content, str):
-            res.append(obj.content)
-        else: 
-            for item in obj.content: 
-                res.extend(recursive(item))
-        return res
-    # translate
-    # 用多少个并发请求模型呢？ 
-    need_translate = []
+    elif isinstance(content, list):
+        for item in content:
+            yield from recursive_text(item)
+
+
+def collect_text_spans(middle_json: MiddleJson):
+    """按照文档顺序收集所有文本 Span。"""
+
+    spans = []
+
     for page in middle_json.pages:
-        # 构造需要翻译的text
         for block in page.blocks:
-            for i in block.content:
-                need_translate.extend(recursive(i))
+            for item in block.content:
+                spans.extend(recursive_text(item))
 
-    translated_dict = []
-    batch_size = 20
-    for batch_start in range(0, len(need_translate), batch_size):
+    return spans
+
+
+def translate_middle_json(
+    middle_json: MiddleJson,
+    translator: OpenAITranslator,
+    batch_size: int = 20,
+):
+    """翻译 MiddleJson 中的文本。"""
+
+    spans = collect_text_spans(middle_json)
+
+    source_texts = [span.content for span in spans]
+    translated_texts = []
+
+    for batch_start in range(0, len(source_texts), batch_size):
+
+        batch = source_texts[
+            batch_start:batch_start + batch_size
+        ]
+
         try:
-            logger.debug("新一批数据")
-            
-            batch = need_translate[batch_start:batch_start + batch_size]
-            batch_prompt = json.dumps(batch, ensure_ascii=False)
-            text = translator.do_translate(batch_prompt, lang_out=target_lang)
-            
-            if not text.startswith("["):
-                logger.warning(f"大模型返回内容非dict列表：{text}")
-                text = clean_llm_json_output(text)
-                logger.warning(f"修复后的text为：{text}")
+            logger.debug(
+                f"开始翻译批次：{batch_start // batch_size + 1}"
+            )
 
-            batch_result = json.loads(text)
+            batch_prompt = json.dumps(
+                batch,
+                ensure_ascii=False,
+            )
 
-            if not( len(batch_result) == len(batch) ):
-                logger.debug(f"数组长度不匹配！src_len={len(batch)}, output_len={batch_result}")
-                logger.debug(f"src: {batch}")
-                logger.debug(f"output: {batch_result}")
-                raise "大模型返回内容与需要翻译内容不匹配！"
+            response_text = translator.do_translate(batch_prompt)
 
-            translated_dict.extend(batch_result)
+            response_text = clean_llm_json_output(response_text)
 
-        except Exception as e: 
-            logger.error(f"mineru 翻译出现错误:{e}")
-            
-    logger.debug(f"write_back 开始")
-    # 递归写回翻译结果，遍历顺序与 recursive 完全一致
-    def write_back(obj, trans_iter):
-        if isinstance(obj.content, str):
-            tmp = next(trans_iter)
-            # 修复空问题
-            if tmp == "":
-                tmp = " "
-            obj.content = tmp
-        else:
-            for item in obj.content:
-                write_back(item, trans_iter)
-    try: 
-        trans_iter = iter(translated_dict)
-        for page in middle_json.pages:
-            logger.debug("new page")
-            for block in page.blocks:
-                for item in block.content:
-                    write_back(item, trans_iter)
-    except Exception as e: 
-        logger.error(f"write_back 出现错误：{e}")
+            batch_result = json.loads(response_text)
+
+            if not isinstance(batch_result, list):
+                raise ValueError("模型返回结果不是 JSON 数组")
+
+            if len(batch_result) != len(batch):
+                raise ValueError(
+                    f"翻译数量不匹配："
+                    f"src={len(batch)}, "
+                    f"dst={len(batch_result)}"
+                )
+
+            if not all(isinstance(x, str) for x in batch_result):
+                raise ValueError("翻译结果中存在非字符串元素")
+
+            translated_texts.extend(batch_result)
+
+        except Exception as e:
+            logger.exception(f"批次翻译失败：{e}")
+
+            # 翻译失败时保留原文，防止 Span 顺序错位
+            translated_texts.extend(batch)
+
+    if len(spans) != len(translated_texts):
+        raise RuntimeError("翻译结果数量与原始文本数量不一致")
+
+    for span, translated_text in zip(spans, translated_texts):
+        span.content = translated_text if translated_text else " "
 
 
-    pdf_bytes = render(
-        middle_json,
-        RenderFormat.PDF,
-        options=PdfRenderOptions(layout=PdfLayout.REFLOW),
+def render_pages_separately(
+    middle_json,
+    output_path: Path,
+    assets_dir: Path,
+):
+    # 1. 关联图片资源路径
+    attach_image_paths(middle_json, assets_dir)
+
+    # 2. 创建图片资源解析器
+    asset_resolver = create_asset_resolver(assets_dir)
+
+    merged_pdf = fitz.open()
+
+    try:
+        for index, page in enumerate(middle_json.pages):
+
+            logger.info(f"开始渲染第 {index + 1} 页")
+
+            # 复制 MiddleJson，只保留当前页面
+            page_middle_json = middle_json.model_copy(
+                deep=True,
+                update={
+                    "pages": [page],
+                },
+            )
+
+            page_pdf_bytes = render(
+                page_middle_json,
+                RenderFormat.PDF,
+                options=PdfRenderOptions(
+                    layout=PdfLayout.REFLOW,
+                    asset_resolver=asset_resolver,
+                ),
+            )
+
+            # 合并当前页
+            with fitz.open(
+                stream=page_pdf_bytes,
+                filetype="pdf",
+            ) as page_pdf:
+
+                merged_pdf.insert_pdf(page_pdf)
+
+        merged_pdf.save(str(output_path))
+
+    finally:
+        merged_pdf.close()
+
+
+def render_pdf(
+    input_file: str,
+    task_output_dir: Path,
+    translator: OpenAITranslator,
+    target_lang: str = "zh",
+) -> dict:
+    """
+    MinerU PDF 解析 -> 文本翻译 -> PDF 渲染。
+    """
+
+    task_output_dir.mkdir(
+        parents=True,
+        exist_ok=True,
     )
+
+    # 1. MinerU 解析
+    mineru_result = parse_pdf(input_file)
+
+    # 2. 下载 MiddleJson 和图片资源 ZIP
+    middle_json_raw, assets_dir = download_mineru_outputs(
+        mineru_result,
+        task_output_dir,
+    )
+
+    middle_json = MiddleJson.from_json(
+        json.dumps(
+            middle_json_raw,
+            ensure_ascii=False,
+        )
+    )
+
+    logger.info(
+        f"MinerU 解析完成，共 {len(middle_json.pages)} 页"
+    )
+
+    # 3. 翻译
+    translate_middle_json(
+        middle_json,
+        translator,
+        batch_size=20,
+    )
+
+    logger.info("文本翻译完成")
+
+    # 4. 按源页面分别渲染
     dual_output_path = task_output_dir / "mineru_dual.pdf"
 
-    with open(dual_output_path, "wb") as f:
-        f.write(pdf_bytes)
+    render_pages_separately(
+        middle_json,
+        dual_output_path,
+        assets_dir,
+    )
 
-    # TODO: dual_output is not processed yet
+    # TODO: 后续实现原文与译文双语对照排版
     mono_output = dual_output_path
     dual_output = dual_output_path
-    return {"mono_output": mono_output, "dual_output": dual_output}
+
+    return {
+        "mono_output": mono_output,
+        "dual_output": dual_output,
+    }

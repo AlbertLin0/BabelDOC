@@ -43,6 +43,10 @@
     .file-name { font-size:12px; font-weight:700; overflow-wrap:anywhere; }
     .file-size { font-size:11px; color:var(--muted); margin-top:4px; }
     .remove { border:0; background:transparent; color:#8b95a8; cursor:pointer; font-size:20px; padding:4px 7px; }
+    .lang-field { margin-top:14px; }
+    .lang-field label { display:block; font-size:12px; font-weight:650; color:var(--text); margin-bottom:6px; }
+    .lang-field input { width:100%; border:1px solid var(--line); border-radius:11px; padding:11px 13px; font-size:13px; background:#fafbff; color:var(--text); outline:none; transition:.15s; }
+    .lang-field input:focus { border-color:var(--primary); background:#fff; }
     .primary-btn { width:100%; border:0; border-radius:11px; padding:13px 16px; color:#fff; background:var(--primary); font-weight:700; cursor:pointer; margin-top:18px; display:flex; align-items:center; justify-content:center; gap:9px; transition:.15s; }
     .primary-btn:hover:not(:disabled) { background:var(--primary-dark); transform:translateY(-1px); }
     .primary-btn:disabled { opacity:.45; cursor:not-allowed; }
@@ -118,6 +122,11 @@
             <div class="file-badge">PDF</div>
             <div class="file-meta"><div class="file-name" id="fileName"></div><div class="file-size" id="fileSize"></div></div>
             <button class="remove" id="removeFile" title="移除文件" aria-label="移除文件">×</button>
+          </div>
+
+          <div class="lang-field">
+            <label for="targetLang">目标语言</label>
+            <input id="targetLang" type="text" placeholder="例如：English / 简体中文 / 日本語" />
           </div>
 
           <button class="primary-btn" id="translateBtn" disabled>
@@ -197,6 +206,7 @@
     const fileSize = document.getElementById("fileSize");
     const translateBtn = document.getElementById("translateBtn");
     const removeFile = document.getElementById("removeFile");
+    const targetLang = document.getElementById("targetLang");
     const progressWrap = document.getElementById("progressWrap");
     const progressText = document.getElementById("progressText");
     const progressPercent = document.getElementById("progressPercent");
@@ -346,7 +356,8 @@
       // EventSource 只支持 GET，因此先用 POST 上传文件获取 task_id，再用 EventSource 监听进度
       // 但 SSE 也可以通过 POST + fetch 的 ReadableStream 实现，这里采用更简单的方案：
       // 直接用 fetch 上传，返回的响应体是 text/event-stream，手动解析
-      fetch(API_STREAM_URL, { method: "POST", body: formData })
+      const targetLangValue = targetLang.value.trim();
+      fetch(`${API_STREAM_URL}?target_lang=${encodeURIComponent(targetLangValue)}`, { method: "POST", body: formData })
         .then(async (response) => {
           if (!response.ok) throw new Error(await readError(response));
 
