@@ -177,7 +177,7 @@ class BaseTranslator(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def do_translate(self, text, rate_limit_params: dict |None = None):
+    def do_translate(self, text, rate_limit_params: dict |None = None, lang_out: str | None = None):
         """
         Actual translate text, override this method
         :param text: text to translate
@@ -271,7 +271,7 @@ class OpenAITranslator(BaseTranslator):
         wait=wait_exponential(multiplier=1, min=1, max=15),
         before_sleep=before_sleep_log(logger, logging.WARNING),
     )
-    def do_translate(self, text, rate_limit_params: dict|None = None) -> str:
+    def do_translate(self, text, rate_limit_params: dict|None = None, lang_out: str | None = None) -> str:
         logger.debug("调用大模型 >>>>> ")
         options = {}
         if self.send_temperature:
@@ -280,7 +280,7 @@ class OpenAITranslator(BaseTranslator):
         response = self.client.chat.completions.create(
             model=self.model,
             **options,
-            messages=self.prompt(text),
+            messages=self.prompt(text, lang_out),
             extra_body=self.extra_body,
         )
         self.update_token_count(response)
@@ -289,7 +289,9 @@ class OpenAITranslator(BaseTranslator):
             logger.debug(f"大模型返回reasoning content结果 {response.choices[0].message.reasoning}")
         return response.choices[0].message.content.strip()
 
-    def prompt(self, text) -> List[ChatCompletionMessageParam]:
+    def prompt(self, text, lang_out: str | None = None) -> List[ChatCompletionMessageParam]:
+        if lang_out is None:
+            lang_out = self.lang_out
         return [
             {
                 "role": "system",
@@ -297,7 +299,7 @@ class OpenAITranslator(BaseTranslator):
                     "You are a professional, accurate translation engine. "
                     "The user input is a JSON array of strings. "
                     "Each element may be in any language: Chinese, Spanish, Thai, Pinyin, English, etc. "
-                    "You must translate each element in the array one by one into {self.lang_out}. "
+                    f"you must translate each element in the array one by one into {lang_out}. "
                     "Rules:\n"
                     "1. Keep the order strictly the same as input.\n"
                     "2. The output MUST be a JSON array only.\n"

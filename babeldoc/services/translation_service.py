@@ -169,7 +169,7 @@ class TranslationManager:
         set_translate_rate_limiter(config.qps)
 
 
-    async def _run_translation(self, file_path: Path, task_id: str, lang_in: str|None = None, lang_out: str|None = None):
+    async def _run_translation(self, file_path: Path, task_id: str, lang_out: str|None = None):
         """
         @param file_path: 输入文件路径 工作目录+xxx+xxx.pdf
         @param task_id: 任务ID
@@ -189,7 +189,7 @@ class TranslationManager:
                 input_file=str(file_path),
                 output_dir=str(task_output_dir),
                 translator=self.translator,
-                lang_in=lang_in or config.lang_in,
+                lang_in=config.lang_in,
                 lang_out=lang_out or config.lang_out,
                 no_dual=False,   #生成双语
                 no_mono=False,   #生成单语
@@ -209,7 +209,7 @@ class TranslationManager:
             async for event in babeldoc_async_translate(cfg):
                 if event["type"] == "detected Scanned File":
                     loop = asyncio.get_event_loop()
-                    mineru_result = await loop.run_in_executor(None, render_pdf, event["input_file"], task_output_dir, self.translator)
+                    mineru_result = await loop.run_in_executor(None, render_pdf, event["input_file"], task_output_dir, self.translator, lang_out)
 
                     mono_output = mineru_result["mono_output"]
                     dual_output = mineru_result["dual_output"]
@@ -250,6 +250,8 @@ manager = TranslationManager.get_instance()
 async def process_translation(request: PoInputRequest, ifywid: str, task_id: str) -> PoReturnRequestDescription:
     """翻译任务处理逻辑（占位实现，后续接入真实翻译流程）"""
     zdata = ZDataInput(**decrypt_data(request.ZDATA, request.SYSID))  # ZDataInput # 冗余操作，后续需要根据需求调整
+    if zdata.TARGET_LANG is None:
+        zdata.TARGET_LANG = manager.translator.lang_out
     task_output_dir = config.output_dir / task_id
     task_output_dir.mkdir(parents=True, exist_ok=True)
     if zdata.PICTURE is not None:
@@ -259,7 +261,7 @@ async def process_translation(request: PoInputRequest, ifywid: str, task_id: str
 
         # 直接调用 mineru 翻译 TODO: 处理翻译结果
         loop = asyncio.get_event_loop()
-        mineru_result = await loop.run_in_executor(None, render_pdf, str(pdf_path), task_output_dir, manager.translator)
+        mineru_result = await loop.run_in_executor(None, render_pdf, str(pdf_path), task_output_dir, manager.translator, zdata.TARGET_LANG)
         mono_output = mineru_result["mono_output"]
         dual_output = mineru_result["dual_output"]
 
@@ -286,7 +288,7 @@ async def process_translation(request: PoInputRequest, ifywid: str, task_id: str
             file_path=str(task_output_dir / f"file_{task_id}.pdf")
         )
         
-        mono_output, dual_output = await manager._run_translation(task_output_dir / f"file_{task_id}.pdf", task_id)
+        mono_output, dual_output = await manager._run_translation(task_output_dir / f"file_{task_id}.pdf", task_id, lang_out=zdata.TARGET_LANG)
 
         opentext_response: OpenTextUploadResponse = await file_upload(str(mono_output), ArcId=zdata.FILE_ARCID or "Z1") # TODO:
         new_FILE_ID = zdata.FILE_ID
