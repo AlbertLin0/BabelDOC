@@ -15,6 +15,10 @@ from schemas.api.po_execptions import PoValidationError, PoErrorCode
 from app_devs import schedule, logger
 from config.config import verify_IFYWID
 from babeldoc.services.translation_service import manager
+from babeldoc.utils.util import LangMapping
+
+LangMapping.set_default_lang("zh")
+
 import re
 
 def safe_join_json_array(raw: str, sep="，") -> str:
@@ -65,9 +69,16 @@ async def get_translate_result(request: PoInputRequestDescription) -> JSONRespon
     if zdata.TEXT is not None:
         logger.info("文本翻译：")
         if zdata.TARGET_LANG is None:
-            zdata.TARGET_LANG = manager.translator.lang_out
+            zdata.TARGET_LANG = LangMapping.get_default_lang()
+        if not isinstance(zdata.TARGET_LANG, str):
+            raise PoValidationError(
+                message="TARGET_LANG 必须是字符串",
+                job_id=zdata.JOBID,
+                request=request,  # 携带原始请求对象，供异常处理器使用
+            )
+        target_lang_name = LangMapping.get_english_name(zdata.TARGET_LANG.strip())
             
-        translated_text = manager.translator.do_translate(zdata.TEXT, lang_out=zdata.TARGET_LANG)
+        translated_text = manager.translator.do_translate(zdata.TEXT, lang_out=target_lang_name)
         translated_text = safe_join_json_array(translated_text)
         logger.debug(f"返回字符串：{translated_text}, TYPE: {type(translated_text)}")
         response = ZDataResponse(

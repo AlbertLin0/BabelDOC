@@ -21,6 +21,7 @@ from babeldoc.format.pdf.translation_config import TranslationConfig, WatermarkO
 from babeldoc.format.pdf.high_level import async_translate as babeldoc_async_translate
 from babeldoc._mineru import render_pdf
 from babeldoc.file_system.opentext import file_download, file_upload
+from babeldoc.utils.util import LangMapping
 from pathlib import Path
 import os 
 import io
@@ -28,6 +29,8 @@ import fitz
 import base64
 import asyncio
 from PIL import Image, ImageOps
+
+LangMapping.set_default_lang("zh")
 
 def base64_to_pdf(
     base64_str: str,
@@ -251,7 +254,15 @@ async def process_translation(request: PoInputRequest, ifywid: str, task_id: str
     """翻译任务处理逻辑（占位实现，后续接入真实翻译流程）"""
     zdata = ZDataInput(**decrypt_data(request.ZDATA, request.SYSID))  # ZDataInput # 冗余操作，后续需要根据需求调整
     if zdata.TARGET_LANG is None:
-        zdata.TARGET_LANG = manager.translator.lang_out
+        zdata.TARGET_LANG = LangMapping.get_default_lang()
+
+    if not isinstance(zdata.TARGET_LANG, str):
+        raise PoValidationError(
+            message="TARGET_LANG 必须是字符串",
+            job_id=zdata.JOBID,
+        )
+    target_lang_name = LangMapping.get_english_name(zdata.TARGET_LANG.strip())
+
     task_output_dir = config.output_dir / task_id
     task_output_dir.mkdir(parents=True, exist_ok=True)
     if zdata.PICTURE is not None:
@@ -259,9 +270,9 @@ async def process_translation(request: PoInputRequest, ifywid: str, task_id: str
         logger.debug(f"图片处理")
         pdf_path = base64_to_pdf(zdata.PICTURE, task_output_dir / f"picture_{task_id}.pdf")
 
-        # 直接调用 mineru 翻译 TODO: 处理翻译结果
+        # 直接调用 mineru 翻译
         loop = asyncio.get_event_loop()
-        mineru_result = await loop.run_in_executor(None, render_pdf, str(pdf_path), task_output_dir, manager.translator, zdata.TARGET_LANG)
+        mineru_result = await loop.run_in_executor(None, render_pdf, str(pdf_path), task_output_dir, manager.translator, target_lang_name)
         mono_output = mineru_result["mono_output"]
         dual_output = mineru_result["dual_output"]
 
