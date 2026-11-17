@@ -77,7 +77,7 @@ async def capture_po_request_info(request: Request, call_next):
                 )
 
             # 提取并校验必要字段
-            required_fields = ["IFYWID", "BSKEY", "SAPKEY"]
+            required_fields = ["IFYWID", "BSKEY", "ZFILED1"]
 
             missing_fields = [
                 field for field in required_fields
@@ -95,7 +95,7 @@ async def capture_po_request_info(request: Request, call_next):
 
             request.state.ifywid = is_input["IFYWID"]
             request.state.bskey = is_input["BSKEY"]
-            request.state.sapkey = is_input["SAPKEY"]
+            request.state.sapkey = is_input["SAPKEY"] or is_input["BSKEY"]
 
         except json.JSONDecodeError as e:
             raise PoValidationError(message="请求体不是合法的 JSON 格式") from e

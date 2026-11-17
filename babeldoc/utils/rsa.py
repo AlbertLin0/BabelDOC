@@ -150,7 +150,7 @@ def get_decrypt_private_key(SYSID: str) -> RSAPrivateKey:
         return _rsa_yx_decrypt_private_key
     elif SYSID == "JWQT":   #前台系统
         return _rsa_decrypt_private_key
-    elif SYSID == "JWS4":   # 报账系统
+    elif SYSID == "FYMX":   # 报账系统
         return _rsa_sap_decrypt_private_key
     else:
         raise PoValidationError(message=f"未知 SYSID: {SYSID}")
@@ -159,11 +159,11 @@ def get_encrypt_public_key(SYSID: str) -> RSAPublicKey:
     """
     """
     """验证 SYSID 是否匹配"""
-    if SYSID == "JWYX": #   影像系统
+    if SYSID.strip() == "JWYX": #   影像系统
         return _rsa_yx_encrypt_public_key
-    elif SYSID == "JWQT":   #前台系统
+    elif SYSID.strip() == "JWQT":   #前台系统
         return _rsa_encrypt_public_key
-    elif SYSID == "JWS4":   # 报账系统
+    elif SYSID.strip() == "FYMX":   # 报账系统
         return _rsa_sap_encrypt_public_key
     else:
         raise PoValidationError(message=f"未知 SYSID: {SYSID}")

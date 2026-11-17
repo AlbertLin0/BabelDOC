@@ -325,7 +325,7 @@ async def process_translation(request: PoInputRequest, ifywid: str, task_id: str
         ZEXTRA4=zdata.ZEXTRA4,
         ZEXTRA5=zdata.ZEXTRA5,
     )
-    _SYSID, _ZFILED5 = verify_SYSID(request.SYSID)
+    _SYSID, _ZFILED5 = verify_SYSID(request.SYSID, request.ZFILED1) # type: ignore
     return PoReturnRequestDescription(
         IS_INPUT=PoReturnRequest(
             SYSID=_SYSID,

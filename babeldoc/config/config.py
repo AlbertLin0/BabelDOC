@@ -68,19 +68,24 @@ def verify_IFYWID(IFYWID: str) -> str:
         raise PoValidationError(message=f"未知 IFYYWID: {IFYWID}")
     return res
 
-def verify_SYSID(SYSID: str) -> tuple[str, str]:
+def verify_SYSID(SYSID: str, ZFILED1: str) -> tuple[str, str]:
     """
     @return: SYSID 对应的 返回 SYSID 和 ZFILED5
     """
     """验证 SYSID 是否匹配"""
-    if SYSID == "JWYX":
-        return "FYMX", "YXQ"
-    elif SYSID == "JWQT":
-        return "FYZNT", "QTQ"
-    elif SYSID == "JWS4":
+    res_sysid = ""
+    if SYSID == "JWYX" and ZFILED1 == "YXQ":
+        return "JWYX", "YXQ"
+    elif SYSID == "JWQT" and ZFILED1 == "QTQ":
+        return "JWQT", "QTQ"
+    elif SYSID == "JWQT" and ZFILED1 == "YKQ":
+        return "JWQT", "YKQ"
+    elif SYSID == "FYMX" and ZFILED1 == "700":
         return "FYMX", "700"
+    elif SYSID == "FYMX" and ZFILED1 == "701":
+        return "FYMX", "701"
     else:
-        raise PoValidationError(message=f"未知 SYSID: {SYSID}")
+        raise PoValidationError(message=f"未知 SYSID: {SYSID}， 未知 ZFILED1: {ZFILED1}")
 
 def random_str_generate(length: int = 10) -> str:
     """生成随机字符串"""

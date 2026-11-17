@@ -251,6 +251,7 @@ def translate_middle_json(
     middle_json: MiddleJson,
     translator: OpenAITranslator,
     batch_size: int = 20,
+    target_lang: str | None = None
 ):
     """翻译 MiddleJson 中的文本。"""
 
@@ -275,7 +276,7 @@ def translate_middle_json(
                 ensure_ascii=False,
             )
 
-            response_text = translator.do_translate(batch_prompt)
+            response_text = translator.do_translate(batch_prompt, lang_out=target_lang)
 
             response_text = clean_llm_json_output(response_text)
 
@@ -398,6 +399,7 @@ def render_pdf(
         middle_json,
         translator,
         batch_size=20,
+        target_lang=target_lang
     )
 
     logger.info("文本翻译完成")
