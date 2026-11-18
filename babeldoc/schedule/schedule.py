@@ -30,6 +30,7 @@ class Task:
     request: PoInputRequest
     ifywid: str
     zdata: ZDataInput
+    
 
     status: TaskStatus = TaskStatus.PENDING
     created_at: float = field(default_factory=time.time)

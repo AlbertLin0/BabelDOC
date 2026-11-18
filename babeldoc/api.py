@@ -12,6 +12,8 @@ from babeldoc.app_devs import logger, config
 from babeldoc.services.workloop_service import worker_loop
 from babeldoc.routers.po_router import router as po_router
 from babeldoc.routers.queue_router import router as queue_router
+from babeldoc.routers.metric_router import router as metric_router
+
 from babeldoc.utils.rsa import encrypt_data
 from babeldoc.config.config import random_str_generate
 from typing import Optional, Any
@@ -20,6 +22,7 @@ from typing import Optional, Any
 app = FastAPI(title="数科调度翻译服务")
 app.include_router(po_router)
 app.include_router(queue_router)
+app.include_router(metric_router)
 
 @app.on_event("startup")
 async def on_startup() -> None:

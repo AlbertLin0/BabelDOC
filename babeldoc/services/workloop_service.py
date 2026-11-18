@@ -4,20 +4,49 @@ from schedule.schedule import Task
 from app_devs import schedule, config, semaphore, logger
 from services.translation_service import process_translation
 from services.callback_service import notify_callback
+from babeldoc.services.metrics import MetricsService
+import time 
+metrics = MetricsService.get_instance()
 
 async def _handle_task(task: Task) -> None:
     """后台协程：处理单个翻译任务的完整生命周期（完成 / 失败 / 回调）"""
     try:
         logger.info(f"开始处理任务: task_id={task.task_id}, job_id={task.job_id}")
+
         result = await process_translation(task.request, task.ifywid, task.task_id)
         schedule.complete(task.task_id, jsonable_encoder(result))
+
         logger.info(f"任务处理完成: task_id={task.task_id}")
         if config.callback_url:
             logger.info("callback")
             await notify_callback(config.callback_url, task.task_id, jsonable_encoder(result))
+
+        metrics.record_task(
+            task.task_id,
+            task.job_id,
+            task.zdata.TARGET_TYPE, # type: ignore
+            task.zdata.TARGET_LANG, # type: ignore
+            "completed",
+            task.created_at,
+            task.file_name,
+            started_at=task.started_at,
+            completed_at=task.completed_at,
+        )
     except asyncio.CancelledError:
         logger.info(f"任务被取消: task_id={task.task_id}")
         schedule.fail(task.task_id, "任务已取消")
+        metrics.record_task(
+            task.task_id,
+            task.job_id,
+            task.zdata.TARGET_TYPE, # type: ignore
+            task.zdata.TARGET_LANG, # type: ignore
+            "cancelled",
+            task.created_at,
+            task.file_name,
+            started_at=task.started_at,
+            error_msg="任务已取消",
+        )
+
         if config.callback_url:
             await notify_callback(
                 config.callback_url,
@@ -28,6 +57,18 @@ async def _handle_task(task: Task) -> None:
         logger.error(f"任务处理失败: task_id={task.task_id}, error={e}")
         logger.exception(f"任务处理失败: task_id={task.task_id}, error={e}")
         schedule.fail(task.task_id, str(e))
+        metrics.record_task(
+            task.task_id,
+            task.job_id,
+            task.zdata.TARGET_TYPE, # type: ignore
+            task.zdata.TARGET_LANG, # type: ignore
+            "failed",
+            task.created_at,
+            task.file_name,
+            started_at=task.started_at,
+            error_msg=str(e),
+        )
+
         raise e
     finally:
         semaphore.release()
