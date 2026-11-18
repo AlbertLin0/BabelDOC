@@ -314,7 +314,7 @@ async def process_translation(request: PoInputRequest, ifywid: str, task_id: str
         CODE=PoResponseFlag.S.value,
         MESSAGE=None,
         TEXT=zdata.TEXT,
-        PICTURE=zdata.PICTURE,
+        PICTURE="",
         FILE_ID=new_FILE_ID,
         FILE_NAME=new_FILE_NAME,
         FILE_ARCID=new_FILE_ARCID,

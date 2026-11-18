@@ -54,8 +54,10 @@ async def get_translate_result(request: PoInputRequestDescription) -> JSONRespon
     """提交翻译任务到队列，立即返回任务标识，完成后回调通知"""
     logger.debug("收到翻译请求: ")
     logger.debug(json.dumps(request.model_dump(), ensure_ascii=False))
-
-    zdata = ZDataInput(**decrypt_data(request.IS_INPUT.ZDATA, request.IS_INPUT.SYSID))
+    if request.IS_INPUT.ZFILED2 == "1":
+        zdata = ZDataInput.model_validate_json(request.IS_INPUT.ZDATA)
+    else:
+        zdata = ZDataInput(**decrypt_data(request.IS_INPUT.ZDATA, request.IS_INPUT.SYSID))
     if not (zdata.TEXT is not None or zdata.PICTURE is not None or zdata.FILE_ID is not None):
         raise PoValidationError(
             message="TEXT、PICTURE、FILE_ID 三者之一不能为空",
@@ -79,7 +81,7 @@ async def get_translate_result(request: PoInputRequestDescription) -> JSONRespon
         target_lang_name = LangMapping.get_english_name(zdata.TARGET_LANG.strip())
         logger.debug(f"目标语言 >>>> {target_lang_name}")
             
-        translated_text = manager.translator.do_translate(zdata.TEXT, lang_out=target_lang_name)
+        translated_text = manager.translator.do_text_translate(zdata.TEXT, lang_out=target_lang_name)
         translated_text = safe_join_json_array(translated_text)
         logger.debug(f"返回字符串：{translated_text}, TYPE: {type(translated_text)}")
         response = ZDataResponse(

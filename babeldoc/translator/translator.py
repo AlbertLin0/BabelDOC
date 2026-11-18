@@ -289,6 +289,39 @@ class OpenAITranslator(BaseTranslator):
             logger.debug(f"大模型返回reasoning content结果 {response.choices[0].message.reasoning}")
         return response.choices[0].message.content.strip()
 
+    def do_text_translate(self, text, rate_limit_params: dict|None = None, lang_out: str | None = None) -> str:
+        logger.debug("调用文本翻译大模型 >>>>> ")
+        options = {}
+        if self.send_temperature:
+            options.update(self.options)
+
+        response = self.client.chat.completions.create(
+            model=self.model,
+            **options,
+            messages=[{
+                "role": "system", 
+                "content": f"""你是专业翻译，严格遵守下面所有规则：
+                1. 目标语言：{lang_out} language
+                2. 一对一逐行翻译，严格保留原文全部内容，不省略、不删减、不新增内容
+                3. 翻译后的换行、分段、编号、列表排版和原文完全保持一致
+                4. 只输出翻译结果，不要解释、不要保留原始多语言文本、不要额外说明文字、不要注释
+                5. 每一行的「**语言名**」标签也要翻译成俄语，后面紧跟译文"""
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        "待翻译内容: "
+                        f"\n{json.dumps(text, ensure_ascii=False)}"
+                    )
+                }
+                ],
+            extra_body=self.extra_body,
+        )
+        self.update_token_count(response)
+        logger.debug("大模型内容返回 <<<<< ")
+        if response.choices[0].message.reasoning is not None: 
+            logger.debug(f"大模型返回reasoning content结果 {response.choices[0].message.reasoning}")
+        return response.choices[0].message.content.strip()
     def prompt(self, text, lang_out: str | None = None) -> List[ChatCompletionMessageParam]:
         if lang_out is None:
             lang_out = self.lang_out
@@ -297,9 +330,9 @@ class OpenAITranslator(BaseTranslator):
                 "role": "system",
                 "content": (
                     "You are a professional, accurate translation engine. "
+                    f"you must translate each element in the array one by one into {lang_out}. "
                     "The user input is a JSON array of strings. "
                     "Each element may be in any language: Chinese, Spanish, Thai, Pinyin, English, etc. "
-                    f"you must translate each element in the array one by one into {lang_out}. "
                     "Rules:\n"
                     "1. Keep the order strictly the same as input.\n"
                     "2. The output MUST be a JSON array only.\n"
@@ -328,6 +361,7 @@ class OpenAITranslator(BaseTranslator):
         before_sleep=before_sleep_log(logger, logging.WARNING),
     )
     def do_llm_translate(self, text, rate_limit_params: dict|None = None):
+        logger.warning(f"llm translate >>>> ")
         if text is None:
             return None
 
