@@ -1,5 +1,6 @@
 
 import json
+import re
 import requests
 import fitz
 import zipfile
@@ -247,6 +248,32 @@ def collect_text_spans(middle_json: MiddleJson):
     return spans
 
 
+# 匹配 <img ... src="data:image/...base64,..." ...> 片段
+_BASE64_IMG_RE = re.compile(
+    r'<img[^>]*\bsrc\s*=\s*["\'](data:image/[^"\']*?;base64,[^"\']*?)["\'][^>]*>',
+    re.IGNORECASE,
+)
+
+
+def _strip_base64_images(text: str) -> tuple[str, list[str]]:
+    """把文本中的 base64 <img> 片段替换为占位符，返回 (清理后的文本, 原片段列表)。"""
+    placeholders: list[str] = []
+
+    def _replace(m: re.Match) -> str:
+        placeholders.append(m.group(0))
+        return f"\x00IMG{len(placeholders) - 1}\x00"
+
+    cleaned = _BASE64_IMG_RE.sub(_replace, text)
+    return cleaned, placeholders
+
+
+def _restore_base64_images(text: str, placeholders: list[str]) -> str:
+    """把译文中的占位符还原回原始 base64 <img> 片段。"""
+    for i, original in enumerate(placeholders):
+        text = text.replace(f"\x00IMG{i}\x00", original)
+    return text
+
+
 def translate_middle_json(
     middle_json: MiddleJson,
     translator: OpenAITranslator,
@@ -257,7 +284,14 @@ def translate_middle_json(
 
     spans = collect_text_spans(middle_json)
 
-    source_texts = [span.content for span in spans]
+    # 预处理：剥离每个 span.content 中的 base64 图片，避免发给 LLM
+    source_texts: list[str] = []
+    placeholder_buckets: list[list[str]] = []
+    for span in spans:
+        cleaned, placeholders = _strip_base64_images(span.content)
+        source_texts.append(cleaned)
+        placeholder_buckets.append(placeholders)
+
     translated_texts = []
 
     for batch_start in range(0, len(source_texts), batch_size):
@@ -306,8 +340,9 @@ def translate_middle_json(
     if len(spans) != len(translated_texts):
         raise RuntimeError("翻译结果数量与原始文本数量不一致")
 
-    for span, translated_text in zip(spans, translated_texts):
-        span.content = translated_text if translated_text else " "
+    for span, translated_text, placeholders in zip(spans, translated_texts, placeholder_buckets):
+        restored = _restore_base64_images(translated_text, placeholders)
+        span.content = restored if restored else " "
 
 
 def render_pages_separately(
