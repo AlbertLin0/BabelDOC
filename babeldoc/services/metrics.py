@@ -3,9 +3,14 @@ import sqlite3
 import threading
 from contextlib import contextmanager
 from datetime import datetime, timedelta
+from io import BytesIO
 from pathlib import Path
 from typing import Optional
+
+from openpyxl import Workbook
+
 from babeldoc.app_devs import logger
+from babeldoc.utils.util import LangMapping
 
 class MetricsService:
     """翻译指标统计（单例 + 线程安全）"""
@@ -79,7 +84,7 @@ class MetricsService:
             """INSERT OR REPLACE INTO translate_records
                (task_id, job_id, task_type, target_lang, file_name, status, duration_ms,
                 error_msg, created_at, started_at, completed_at, created_date)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (task_id, job_id, task_type, target_lang, file_name, status, duration_ms,
              error_msg, created_at, started_at, completed_at,
              datetime.fromtimestamp(created_at).strftime("%Y-%m-%d")),
@@ -87,44 +92,159 @@ class MetricsService:
         conn.commit()
     
     # ---------- 查询 ----------
-    def count_by_date_range(
+    def list_by_date_range(
         self,
-        start_date: str,       # '2026-11-01'
-        end_date: str,         # '2026-11-30'
+        pageNo: int,
+        pageSize: int,
+        start_date: str,
+        end_date: str,
+        task_type: Optional[str] = None,
+        language: Optional[str] = None,
         status: Optional[str] = None,
-    ) -> int:
-        """统计日期范围内的翻译总次数"""
-        sql = "SELECT COUNT(*) FROM translate_records WHERE created_date BETWEEN ? AND ?"
-        params = [start_date, end_date]
+    ) -> dict:
+        """分页返回日期范围内的翻译记录，支持按 type/语言/状态过滤"""
+        where_clauses: list[str] = ["created_date BETWEEN ? AND ?"]
+        params: list = [start_date, end_date]
+        if task_type:
+            where_clauses.append("task_type = ?")
+            params.append(task_type)
+        if language:
+            where_clauses.append("target_lang = ?")
+            params.append(language)
         if status:
-            sql += " AND status = ?"
+            where_clauses.append("status = ?")
             params.append(status)
-        return self._get_conn().execute(sql, params).fetchone()[0]
+        where_sql = "WHERE " + " AND ".join(where_clauses)
+
+        conn = self._get_conn()
+        total = conn.execute(
+            f"SELECT COUNT(*) FROM translate_records {where_sql}", params
+        ).fetchone()[0]
+
+        offset = (pageNo - 1) * pageSize
+        records = [
+            dict(r) for r in conn.execute(
+                f"SELECT * FROM translate_records {where_sql} ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                params + [pageSize, offset],
+            ).fetchall()
+        ]
+        return {"pageNo": pageNo, "pageSize": pageSize, "list": records}
+
+    # 导出表头
+    EXCEL_HEADERS = [
+        "task_id", "job_id", "task_type", "target_lang", "file_name", "status",
+        "duration_ms", "error_msg", "created_at", "started_at", "completed_at",
+    ]
+
+    def export_to_excel(
+        self,
+        start_date: str,
+        end_date: str,
+        task_type: Optional[str] = None,
+        language: Optional[str] = None,
+        status: Optional[str] = None,
+    ) -> bytes:
+        """导出日期范围内的翻译记录为 xlsx 文件（全量，不分页），返回 bytes"""
+        where_clauses: list[str] = ["created_date BETWEEN ? AND ?"]
+        params: list = [start_date, end_date]
+        if task_type:
+            where_clauses.append("task_type = ?")
+            params.append(task_type)
+        if language:
+            where_clauses.append("target_lang = ?")
+            params.append(language)
+        if status:
+            where_clauses.append("status = ?")
+            params.append(status)
+        where_sql = "WHERE " + " AND ".join(where_clauses)
+
+        rows = self._get_conn().execute(
+            f"SELECT * FROM translate_records {where_sql} ORDER BY created_at DESC",
+            params,
+        ).fetchall()
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "translate_records"
+        ws.append(self.EXCEL_HEADERS)
+        for row in rows:
+            ws.append([row[h] for h in self.EXCEL_HEADERS])
+
+        buf = BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        return buf.getvalue()
     
     def count_all(
         self,
-        target_lang: Optional[str] = None,
-        task_type: Optional[str] = None,
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
         status: Optional[str] = None,
-    ) -> int:
-        """统计翻译任务总数，可按语言/类型/日期/状态过滤"""
-        sql = "SELECT COUNT(*) FROM translate_records WHERE 1=1"
+    ) -> dict:
+        """一次返回：总次数 + 各 type + 平均时长 + 各语言次数（全量对齐 LangMapping）+ 每日次数"""
+        where_clauses: list[str] = []
         params: list = []
-        if target_lang:
-            sql += " AND target_lang = ?"
-            params.append(target_lang)
-        if task_type:
-            sql += " AND task_type = ?"
-            params.append(task_type)
         if start_date and end_date:
-            sql += " AND created_date BETWEEN ? AND ?"
+            where_clauses.append("created_date BETWEEN ? AND ?")
             params += [start_date, end_date]
         if status:
-            sql += " AND status = ?"
+            where_clauses.append("status = ?")
             params.append(status)
-        return self._get_conn().execute(sql, params).fetchone()[0]
+        where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
+
+        conn = self._get_conn()
+
+        # 1. 总次数
+        total = conn.execute(
+            f"SELECT COUNT(*) FROM translate_records {where_sql}", params
+        ).fetchone()[0]
+
+        # 2. 各 type 次数 (task_type: 'text'/'file'/'picture')
+        type_rows = conn.execute(
+            f"SELECT UPPER(task_type) AS k, COUNT(*) AS cnt FROM translate_records {where_sql} GROUP BY task_type",
+            params,
+        ).fetchall()
+        type_map = {r["k"]: r["cnt"] for r in type_rows}
+        text_cnt = type_map.get("TEXT", 0)
+        file_cnt = type_map.get("FILE", 0)
+        picture_cnt = type_map.get("PICTURE", 0)
+
+        # 3. 平均时长 (只统计有 duration_ms 的)
+        avg_row = conn.execute(
+            f"SELECT AVG(duration_ms) AS avg_ms FROM translate_records {where_sql} AND duration_ms IS NOT NULL",
+            params,
+        ).fetchone()
+        avg_duration = int(avg_row["avg_ms"]) if avg_row["avg_ms"] is not None else 0
+
+        # 4. 各语言次数 —— 对齐 LangMapping.MAP 全量语言，没数据补 0
+        lang_rows = conn.execute(
+            f"SELECT target_lang, COUNT(*) AS cnt FROM translate_records {where_sql} GROUP BY target_lang",
+            params,
+        ).fetchall()
+        lang_map = {r["target_lang"]: r["cnt"] for r in lang_rows}
+        lang_children = [
+            {"key": code, "value": lang_map.get(code, 0)}
+            for code in LangMapping.MAP
+        ]
+
+        # 5. 每日次数
+        daily_rows = conn.execute(
+            f"SELECT created_date AS k, COUNT(*) AS cnt FROM translate_records {where_sql} GROUP BY created_date ORDER BY k",
+            params,
+        ).fetchall()
+        daily_children = [{"key": r["k"], "value": r["cnt"]} for r in daily_rows]
+
+        return {
+            "list": [
+                {"key": "total", "value": total},
+                {"key": "dynamic", "value": text_cnt},
+                {"key": "attachment", "value": file_cnt},
+                {"key": "screenshot", "value": picture_cnt},
+                {"key": "avgDuration", "value": avg_duration},
+                {"key": "language", "value": total, "children": lang_children},
+                {"key": "daily", "value": total, "children": daily_children},
+            ]
+        }
 
     def group_by_target_lang(
         self,
@@ -175,3 +295,60 @@ class MetricsService:
             params.append(status)
         sql += " GROUP BY task_type ORDER BY cnt DESC"
         return [dict(r) for r in self._get_conn().execute(sql, params).fetchall()]
+
+    def interface2(
+        self,
+        start_date: str,
+        end_date: str,
+    ) -> dict:
+        """概览：总次数 + 成功/失败占比(%) + 平均耗时(ms)"""
+        params: list = [start_date, end_date]
+        where_sql = "WHERE created_date BETWEEN ? AND ?"
+
+        conn = self._get_conn()
+
+        total = conn.execute(
+            f"SELECT COUNT(*) FROM translate_records {where_sql}", params
+        ).fetchone()[0]
+
+        completed = conn.execute(
+            f"SELECT COUNT(*) FROM translate_records {where_sql} AND status = 'completed'",
+            params,
+        ).fetchone()[0]
+
+        failed = conn.execute(
+            f"SELECT COUNT(*) FROM translate_records {where_sql} AND status = 'failed'",
+            params,
+        ).fetchone()[0]
+
+        avg_row = conn.execute(
+            f"SELECT AVG(duration_ms) AS avg_ms FROM translate_records {where_sql} AND duration_ms IS NOT NULL",
+            params,
+        ).fetchone()
+        avg_duration = int(avg_row["avg_ms"]) if avg_row["avg_ms"] is not None else 0
+
+        completed_rate = round(completed / total * 100, 1) if total > 0 else 0.0
+        failed_rate = round(failed / total * 100, 1) if total > 0 else 0.0
+
+        return {
+            "total": total,
+            "completed_rate": completed_rate,
+            "failed_rate": failed_rate,
+            "avg_duration": avg_duration,
+        }
+
+    def interface1(
+        self,
+        start_date: str,
+        end_date: str,
+    ) -> dict:
+        """按日期范围返回每日翻译次数：{date: [...], count: [...]}"""
+        rows = self._get_conn().execute(
+            "SELECT created_date, COUNT(*) AS cnt FROM translate_records "
+            "WHERE created_date BETWEEN ? AND ? GROUP BY created_date ORDER BY created_date",
+            [start_date, end_date],
+        ).fetchall()
+        return {
+            "date": [r["created_date"] for r in rows],
+            "count": [r["cnt"] for r in rows],
+        }
