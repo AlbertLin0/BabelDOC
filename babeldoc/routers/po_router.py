@@ -16,6 +16,12 @@ from app_devs import schedule, logger
 from config.config import verify_IFYWID
 from babeldoc.services.translation_service import manager
 from babeldoc.utils.util import LangMapping
+from babeldoc.services.metrics import MetricsService
+import time 
+import uuid
+
+metrics = MetricsService.get_instance()
+
 
 LangMapping.set_default_lang("zh")
 
@@ -69,27 +75,59 @@ async def get_translate_result(request: PoInputRequestDescription) -> JSONRespon
     # request.IS_INPUT.IFYWID = response_IFYWID
 
     if zdata.TEXT is not None:
+        start_time = time.time()
         logger.info("文本翻译：")
         if zdata.TARGET_LANG is None:
             zdata.TARGET_LANG = LangMapping.get_default_lang()
-        if not isinstance(zdata.TARGET_LANG, str):
-            raise PoValidationError(
-                message="TARGET_LANG 必须是字符串",
-                job_id=zdata.JOBID,
-                request=request,  # 携带原始请求对象，供异常处理器使用
-            )
         target_lang_name = LangMapping.get_english_name(zdata.TARGET_LANG.strip())
-        logger.debug(f"目标语言 >>>> {target_lang_name}")
+        try: 
+            if not isinstance(zdata.TARGET_LANG, str):
+                raise PoValidationError(
+                    message="TARGET_LANG 必须是字符串",
+                    job_id=zdata.JOBID,
+                    request=request,  # 携带原始请求对象，供异常处理器使用
+                )
+            logger.debug(f"目标语言 >>>> {target_lang_name}")
             
-        translated_text = manager.translator.do_text_translate(zdata.TEXT, lang_out=target_lang_name)
-        translated_text = safe_join_json_array(translated_text)
-        logger.debug(f"返回字符串：{translated_text}, TYPE: {type(translated_text)}")
-        response = ZDataResponse(
-            JOBID=zdata.JOBID,
-            CODE=PoErrorCode.SUCCESS.value,
-            MESSAGE="翻译成功",
-            TEXT=translated_text,
-        )
+            translated_text = manager.translator.do_text_translate(zdata.TEXT, lang_out=target_lang_name)
+            translated_text = safe_join_json_array(translated_text)
+            logger.debug(f"返回字符串：{translated_text}, TYPE: {type(translated_text)}")
+            response = ZDataResponse(
+                JOBID=zdata.JOBID,
+                CODE=PoErrorCode.SUCCESS.value,
+                MESSAGE="翻译成功",
+                TEXT=translated_text,
+            )
+            end_time = time.time()
+            metrics.record_task(
+                task_id=str(uuid.uuid4()),
+                job_id=zdata.JOBID,
+                task_type="text",
+                target_lang=target_lang_name,
+                status="completed",
+                created_at=start_time,
+                completed_at=end_time,
+            )
+        except Exception as e:
+            logger.error(f"文本翻译失败: {e}")
+            response = ZDataResponse(
+                JOBID=zdata.JOBID,
+                CODE=PoErrorCode.BUSINESS_ERROR.value,
+                MESSAGE=f"翻译失败: {e}",
+                TEXT=zdata.TEXT,
+            )
+            end_time = time.time()
+            metrics.record_task(
+                task_id=str(uuid.uuid4()),
+                job_id=zdata.JOBID,
+                task_type="text",
+                target_lang=target_lang_name,
+                status="failed",
+                created_at=start_time,
+                completed_at=end_time,
+                error_msg=str(e),
+            )
+            raise e
     else:
         logger.info(f"任务已入队: ")
         task = schedule.submit(request.IS_INPUT, response_IFYWID, zdata)

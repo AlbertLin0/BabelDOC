@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
+from babeldoc.app_devs import logger
 
 class MetricsService:
     """翻译指标统计（单例 + 线程安全）"""
@@ -15,12 +16,14 @@ class MetricsService:
     def __init__(self, db_path: str = "metrics.db"):
         self.db_path = Path(db_path)
         self._local = threading.local()
+        logger.info(f"MetricsService initialized with db_path: {self.db_path}")
         self._init_db()
     
     @classmethod
     def get_instance(cls, db_path: str = "metrics.db") -> "MetricsService":
         with cls._lock:
             if cls._instance is None:
+                logger.info(f"MetricsService instance created with db_path: {db_path}")
                 cls._instance = cls(db_path)
             return cls._instance
     
