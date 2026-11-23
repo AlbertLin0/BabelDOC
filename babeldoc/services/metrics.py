@@ -1,19 +1,15 @@
+"""翻译指标统计服务 —— 轻量 SQLite 持久化"""
 import sqlite3
 import threading
 from contextlib import contextmanager
 from datetime import datetime, timedelta
-from io import BytesIO
 from io import BytesIO
 from pathlib import Path
 from typing import Optional
 
 from openpyxl import Workbook
 
-
-from openpyxl import Workbook
-
 from babeldoc.app_devs import logger
-from babeldoc.utils.util import LangMapping
 from babeldoc.utils.util import LangMapping
 
 class MetricsService:
@@ -89,7 +85,6 @@ class MetricsService:
                (task_id, job_id, task_type, target_lang, file_name, status, duration_ms,
                 error_msg, created_at, started_at, completed_at, created_date)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (task_id, job_id, task_type, target_lang, file_name, status, duration_ms,
              error_msg, created_at, started_at, completed_at,
              datetime.fromtimestamp(created_at).strftime("%Y-%m-%d")),
@@ -118,7 +113,6 @@ class MetricsService:
             params.append(language)
         if status:
             where_clauses.append("status = ?")
-            where_clauses.append("status = ?")
             params.append(status)
         where_sql = "WHERE " + " AND ".join(where_clauses)
 
@@ -134,7 +128,52 @@ class MetricsService:
                 params + [pageSize, offset],
             ).fetchall()
         ]
-        return {"total": len(records), "pageNo": pageNo, "pageSize": pageSize, "list": records}
+        return {"pageNo": pageNo, "pageSize": pageSize, "list": records}
+
+    # 导出表头
+    EXCEL_HEADERS = [
+        "task_id", "job_id", "task_type", "target_lang", "file_name", "status",
+        "duration_ms", "error_msg", "created_at", "started_at", "completed_at",
+    ]
+
+    def export_to_excel(
+        self,
+        start_date: str,
+        end_date: str,
+        task_type: Optional[str] = None,
+        language: Optional[str] = None,
+        status: Optional[str] = None,
+    ) -> bytes:
+        """导出日期范围内的翻译记录为 xlsx 文件（全量，不分页），返回 bytes"""
+        where_clauses: list[str] = ["created_date BETWEEN ? AND ?"]
+        params: list = [start_date, end_date]
+        if task_type:
+            where_clauses.append("task_type = ?")
+            params.append(task_type)
+        if language:
+            where_clauses.append("target_lang = ?")
+            params.append(language)
+        if status:
+            where_clauses.append("status = ?")
+            params.append(status)
+        where_sql = "WHERE " + " AND ".join(where_clauses)
+
+        rows = self._get_conn().execute(
+            f"SELECT * FROM translate_records {where_sql} ORDER BY created_at DESC",
+            params,
+        ).fetchall()
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "translate_records"
+        ws.append(self.EXCEL_HEADERS)
+        for row in rows:
+            ws.append([row[h] for h in self.EXCEL_HEADERS])
+
+        buf = BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        return buf.getvalue()
     
     def count_all(
         self,
@@ -144,16 +183,11 @@ class MetricsService:
     ) -> dict:
         """一次返回：总次数 + 各 type + 平均时长 + 各语言次数（全量对齐 LangMapping）+ 每日次数"""
         where_clauses: list[str] = []
-    ) -> dict:
-        """一次返回：总次数 + 各 type + 平均时长 + 各语言次数（全量对齐 LangMapping）+ 每日次数"""
-        where_clauses: list[str] = []
         params: list = []
         if start_date and end_date:
             where_clauses.append("created_date BETWEEN ? AND ?")
-            where_clauses.append("created_date BETWEEN ? AND ?")
             params += [start_date, end_date]
         if status:
-            where_clauses.append("status = ?")
             where_clauses.append("status = ?")
             params.append(status)
         where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
@@ -189,8 +223,8 @@ class MetricsService:
         ).fetchall()
         lang_map = {r["target_lang"]: r["cnt"] for r in lang_rows}
         lang_children = [
-            {"key": code, "title": value, "value": lang_map.get(code, 0)}
-            for code, value in LangMapping.MAP.items()
+            {"key": code, "value": lang_map.get(code, 0)}
+            for code in LangMapping.MAP
         ]
 
         # 5. 每日次数
@@ -198,17 +232,17 @@ class MetricsService:
             f"SELECT created_date AS k, COUNT(*) AS cnt FROM translate_records {where_sql} GROUP BY created_date ORDER BY k",
             params,
         ).fetchall()
-        daily_children = [{"key": r["k"], "title": r["k"], "value": r["cnt"]} for r in daily_rows]
+        daily_children = [{"key": r["k"], "value": r["cnt"]} for r in daily_rows]
 
         return {
             "list": [
-                {"key": "total", "title": "翻译总次数", "value": total},
-                {"key": "dynamic", "title": "动态字段翻译次数", "value": text_cnt},
-                {"key": "attachment", "title": "附件翻译次数", "value": file_cnt},
-                {"key": "screenshot", "title": "截图翻译次数", "value": picture_cnt},
-                {"key": "avgDuration", "title": "平均响应耗时", "value": avg_duration},
-                {"key": "language", "title": "各语种翻译量", "value": total, "children": lang_children},
-                {"key": "daily", "title": "按日期翻译量", "value": total, "children": daily_children},
+                {"key": "total", "value": total},
+                {"key": "dynamic", "value": text_cnt},
+                {"key": "attachment", "value": file_cnt},
+                {"key": "screenshot", "value": picture_cnt},
+                {"key": "avgDuration", "value": avg_duration},
+                {"key": "language", "value": total, "children": lang_children},
+                {"key": "daily", "value": total, "children": daily_children},
             ]
         }
 
@@ -261,50 +295,6 @@ class MetricsService:
             params.append(status)
         sql += " GROUP BY task_type ORDER BY cnt DESC"
         return [dict(r) for r in self._get_conn().execute(sql, params).fetchall()]
-
-
-    EXCEL_HEADERS = [
-        "task_id", "job_id", "task_type", "target_lang", "file_name", "status",
-        "duration_ms", "error_msg", "created_at", "started_at", "completed_at",
-    ]
-    def export_to_excel(
-        self,
-        start_date: str,
-        end_date: str,
-        task_type: Optional[str] = None,
-        language: Optional[str] = None,
-        status: Optional[str] = None,
-    ) -> bytes:
-        """导出日期范围内的翻译记录为 xlsx 文件（全量，不分页），返回 bytes"""
-        where_clauses: list[str] = ["created_date BETWEEN ? AND ?"]
-        params: list = [start_date, end_date]
-        if task_type:
-            where_clauses.append("task_type = ?")
-            params.append(task_type)
-        if language:
-            where_clauses.append("target_lang = ?")
-            params.append(language)
-        if status:
-            where_clauses.append("status = ?")
-            params.append(status)
-        where_sql = "WHERE " + " AND ".join(where_clauses)
-
-        rows = self._get_conn().execute(
-            f"SELECT * FROM translate_records {where_sql} ORDER BY created_at DESC",
-            params,
-        ).fetchall()
-
-        wb = Workbook()
-        ws = wb.active
-        ws.title = "translate_records"
-        ws.append(self.EXCEL_HEADERS)
-        for row in rows:
-            ws.append([row[h] for h in self.EXCEL_HEADERS])
-
-        buf = BytesIO()
-        wb.save(buf)
-        buf.seek(0)
-        return buf.getvalue()
 
     def interface2(
         self,
