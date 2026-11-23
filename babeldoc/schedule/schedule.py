@@ -20,6 +20,7 @@ class TaskStatus(str, Enum):
     PROCESSING = "PROCESSING"
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
+    CANCELLED = "CANCELLED"
 
 
 @dataclass
@@ -113,51 +114,80 @@ class Schedule:
         self._processing[task.task_id] = task
         return task
 
-    def move_to_position(self, task_id: str, position: int) -> Task:
+    def get_pending(self) -> List[Task]:
+        """获取等待队列中的所有任务"""
+        return self._pending
+
+    def get_processing(self) -> List[Task]:
+        """获取正在处理中的所有任务"""
+        return list(self._processing.values())
+
+    def get_completed(self) -> List[Task]:
+        """获取已完成的所有任务"""
+        return list(self._completed.values())
+
+    def move_to_position(self, task_id: str, position: int) -> str:
         """将任务移动到指定位置（0 为队首）"""
         task = self._find_pending(task_id)
         self._pending.remove(task)
         position = max(0, min(position, len(self._pending)))
         self._pending.insert(position, task)
-        return task
+        return "OK"
 
-    def move_to_front(self, task_id: str) -> Task:
+    def move_to_front(self, task_id: str) -> str:
         """将任务移动到队首"""
         return self.move_to_position(task_id, 0)
 
-    def move_to_back(self, task_id: str) -> Task:
+    def move_to_back(self, task_id: str) -> str:
         """将任务移动到队尾"""
         return self.move_to_position(task_id, len(self._pending) - 1)
 
-    def remove(self, task_id: str) -> Task:
+    def move_up(self, task_id: str) -> str:
+        """将任务上移一位（已在队首则不移动）"""
+        task = self._find_pending(task_id)
+        current_index = self._pending.index(task)
+        if current_index <= 0:
+            return "OK"
+        return self.move_to_position(task_id, current_index - 1)
+
+    def move_down(self, task_id: str) -> str:
+        """将任务下移一位（已在队尾则不移动）"""
+        task = self._find_pending(task_id)
+        current_index = self._pending.index(task)
+        if current_index >= len(self._pending) - 1:
+            return "OK"
+        return self.move_to_position(task_id, current_index + 1)
+
+    def remove(self, task_id: str) -> str:
         """从等待队列中移除任务"""
         task = self._find_pending(task_id)
         self._pending.remove(task)
         task._event.set()
-        return task
+        return "OK"
 
-    def cancel(self, task_id: str) -> Task:
+    def cancel(self, task_id: str) -> str:
         """取消任务：等待中的直接移除，执行中的尝试中断"""
         # 1. 等待队列中的任务：直接移除
         for i, task in enumerate(self._pending):
             if task.task_id == task_id:
                 self._pending.pop(i)
                 task.cancelled = True
-                task.status = TaskStatus.FAILED
+                task.status = TaskStatus.CANCELLED
                 task.error = "任务已取消"
                 task._event.set()
                 logger.info(f"已取消等待中的任务: task_id={task_id}")
-                return task
+                return "OK"
+        raise ValueError(f"任务 {task_id} 在等待队列中不存在")
         # 2. 正在执行的任务：设置标志并中断 asyncio 任务
-        task = self._processing.get(task_id)
-        if task is not None:
-            task.cancel()
-            logger.info(f"正在取消执行中的任务: task_id={task_id}")
-            return task
+        # task = self._processing.get(task_id)
+        # if task is not None:
+        #     task.cancel()
+        #     logger.info(f"正在取消执行中的任务: task_id={task_id}")
+        #     return "OK"
         # 3. 已完成的任务
-        if task_id in self._completed:
-            raise ValueError(f"任务 {task_id} 已完成，无法取消")
-        raise ValueError(f"任务 {task_id} 不存在")
+        # if task_id in self._completed:
+        #     raise ValueError(f"任务 {task_id} 已完成，无法取消")
+        # raise ValueError(f"任务 {task_id} 不存在")
 
     def complete(self, task_id: str, result: Optional[Dict[str, Any]] = None) -> None:
         """标记任务为已完成"""
@@ -170,6 +200,16 @@ class Schedule:
         self._completed[task_id] = task
         task._event.set()
 
+    def canceled(self, task_id: str) -> None:
+        task = self._processing.pop(task_id, None)
+        if task is None:
+            return
+        task.status = TaskStatus.CANCELLED
+        task.completed_at = time.time()
+        task.error = "任务已取消"
+        self._completed[task_id] = task
+        task._event.set()
+        
     def fail(self, task_id: str, error: str) -> None:
         """标记任务为失败"""
         task = self._processing.pop(task_id, None)
