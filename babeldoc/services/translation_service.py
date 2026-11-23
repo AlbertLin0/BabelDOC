@@ -188,7 +188,7 @@ class TranslationManager:
             logger.info(f"debug mode is {config.debug}")
             #构建翻译配置
             cfg = TranslationConfig(
-                debug=True,
+                debug=False,
                 input_file=str(file_path),
                 output_dir=str(task_output_dir),
                 translator=self.translator,

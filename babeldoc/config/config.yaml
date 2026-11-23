@@ -221,7 +221,7 @@ openai_config:
   base_url: "http://10.16.6.191:3000/v1"
 
   # The API key for the OpenAI API
-  api_key: "sk-oaDNxIRQHkqMSBVxr6L2bUXVtDBKdox9nILlxWcBi7JmEG9E"
+  api_key: "sk-8zzmwPcxCeyV6D7aD529E9727f334d508eD4675972E88001"
 
   # OpenAI model to use for automatic term extraction. Defaults to model when unset.
   term_extraction_model: null
@@ -258,7 +258,7 @@ openai_config:
 # 
 max_concurrent_translations: 10
 
-mineru_base_url: "http://10.16.6.191:8001"
+mineru_base_url: "http://10.16.6.191:8011"
 # mineru parameters setted in _mineru.py
 
 # PO API 

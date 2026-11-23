@@ -18,6 +18,9 @@ from babeldoc.routers.account_router import router as account_router
 from babeldoc.utils.rsa import encrypt_data
 from babeldoc.config.config import random_str_generate
 from typing import Optional, Any
+from fastapi.middleware.cors import CORSMiddleware
+
+
 
 
 app = FastAPI(title="数科调度翻译服务")
@@ -25,6 +28,15 @@ app.include_router(po_router)
 app.include_router(queue_router)
 app.include_router(metric_router)
 app.include_router(account_router)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # 不要直接*上生产
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 @app.on_event("startup")
 async def on_startup() -> None:
@@ -223,4 +235,4 @@ async def global_exception_handler(
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=38001)
+    uvicorn.run(app, host="0.0.0.0", port=38002)

@@ -103,9 +103,10 @@ async def get_translate_result(request: PoInputRequestDescription) -> JSONRespon
                 task_id=str(uuid.uuid4()),
                 job_id=zdata.JOBID,
                 task_type="text",
-                target_lang=target_lang_name,
+                target_lang=zdata.TARGET_LANG,
                 status="completed",
                 created_at=start_time,
+                started_at=start_time,
                 completed_at=end_time,
             )
         except Exception as e:

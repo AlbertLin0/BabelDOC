@@ -146,7 +146,7 @@ class TranslationManager:
             
             #构建翻译配置
             cfg = TranslationConfig(
-                debug=DEBUG,
+                debug=False,
                 input_file=str(file_path),
                 output_dir=str(task_output_dir),
                 translator=translator,

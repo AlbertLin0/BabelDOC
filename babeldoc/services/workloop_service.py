@@ -24,7 +24,7 @@ async def _handle_task(task: Task) -> None:
         metrics.record_task(
             task.task_id,
             task.job_id,
-            task.zdata.TARGET_TYPE, # type: ignore
+            "picture" if task.zdata.PICTURE is not None else "file",
             task.zdata.TARGET_LANG, # type: ignore
             "completed",
             task.created_at,
@@ -38,7 +38,7 @@ async def _handle_task(task: Task) -> None:
         metrics.record_task(
             task.task_id,
             task.job_id,
-            task.zdata.TARGET_TYPE, # type: ignore
+            "picture" if task.zdata.PICTURE is not None else "file",
             task.zdata.TARGET_LANG, # type: ignore
             "cancelled",
             task.created_at,
@@ -60,7 +60,7 @@ async def _handle_task(task: Task) -> None:
         metrics.record_task(
             task.task_id,
             task.job_id,
-            task.zdata.TARGET_TYPE, # type: ignore
+            "picture" if task.zdata.PICTURE is not None else "file",
             task.zdata.TARGET_LANG, # type: ignore
             "failed",
             task.created_at,
