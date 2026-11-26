@@ -108,6 +108,7 @@ async def get_translate_result(request: PoInputRequestDescription) -> JSONRespon
                 created_at=start_time,
                 started_at=start_time,
                 completed_at=end_time,
+                user_id=zdata.USER_ID,
             )
         except Exception as e:
             logger.error(f"文本翻译失败: {e}")
@@ -127,6 +128,7 @@ async def get_translate_result(request: PoInputRequestDescription) -> JSONRespon
                 created_at=start_time,
                 completed_at=end_time,
                 error_msg=str(e),
+                user_id=zdata.USER_ID,
             )
             raise e
     else:

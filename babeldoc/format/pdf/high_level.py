@@ -886,14 +886,10 @@ def _do_translate_single(
             "input.decompressed.pdf",
         )
         # Fix null xref in PDF file
-        logger.debug(f"{output_path}")
         try:
             _ = fix_null_page_content(doc_input)
-            logger.debug("2")
             fix_filter(doc_input)
-            logger.debug("3")
             fix_null_xref(doc_input)
-            logger.debug("4")
         except Exception:
             logger.exception("auto fix failed, please check the pdf file")
         safe_save(doc_input, output_path, expand=True, pretty=True)

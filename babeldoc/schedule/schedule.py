@@ -167,6 +167,8 @@ class Schedule:
 
     def cancel(self, task_id: str) -> str:
         """取消任务：等待中的直接移除，执行中的尝试中断"""
+        from babeldoc.services.metrics import MetricsService
+        metric = MetricsService.get_instance()
         # 1. 等待队列中的任务：直接移除
         for i, task in enumerate(self._pending):
             if task.task_id == task_id:
@@ -176,6 +178,19 @@ class Schedule:
                 task.error = "任务已取消"
                 task._event.set()
                 logger.info(f"已取消等待中的任务: task_id={task_id}")
+                metric.record_task(
+                    task_id=task.task_id,
+                    job_id=task.job_id,
+                    task_type="picture" if task.zdata.PICTURE is not None else "file",
+                    target_lang=task.zdata.TARGET_LANG or "zh", # type: ignore
+                    status=task.status.value,
+                    created_at=task.created_at,
+                    file_name=task.file_name,
+                    started_at=task.started_at,
+                    completed_at=task.completed_at,
+                    error_msg=task.error,
+                    user_id=task.zdata.USER_ID,
+                )
                 return "OK"
         raise ValueError(f"任务 {task_id} 在等待队列中不存在")
         # 2. 正在执行的任务：设置标志并中断 asyncio 任务

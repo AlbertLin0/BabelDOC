@@ -44,6 +44,7 @@ class MetricsService:
             CREATE TABLE IF NOT EXISTS translate_records (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 task_id     TEXT    NOT NULL UNIQUE,
+                user_id     TEXT,
                 job_id      TEXT,
                 task_type   TEXT,           -- 'text' / 'picture' / 'file'
                 target_lang TEXT,
@@ -57,8 +58,15 @@ class MetricsService:
                 created_date TEXT NOT NULL    -- 'YYYY-MM-DD' 便于按日期查询
             )
         """)
+        # 兼容旧表：如果已存在但缺少 user_id 字段，补上
+        cur = conn.execute("PRAGMA table_info(translate_records)")
+        columns = [row[1] for row in cur.fetchall()]
+        if "user_id" not in columns:
+            conn.execute("ALTER TABLE translate_records ADD COLUMN user_id TEXT")
+            logger.info("已为 translate_records 表添加 user_id 字段")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_date ON translate_records(created_date)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_status ON translate_records(status)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_user_id ON translate_records(user_id)")
         conn.commit()
     
     # ---------- 写入 ----------
@@ -74,18 +82,19 @@ class MetricsService:
         started_at: Optional[float] = None,
         completed_at: Optional[float] = None,
         error_msg: Optional[str] = None,
+        user_id: Optional[str] = None,
     ):
         duration_ms = None
         if started_at and completed_at:
             duration_ms = int((completed_at - started_at) * 1000)
-        
+
         conn = self._get_conn()
         conn.execute(
             """INSERT OR REPLACE INTO translate_records
-               (task_id, job_id, task_type, target_lang, file_name, status, duration_ms,
+               (task_id, user_id, job_id, task_type, target_lang, file_name, status, duration_ms,
                 error_msg, created_at, started_at, completed_at, created_date)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (task_id, job_id, task_type, target_lang, file_name, status, duration_ms,
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (task_id, user_id, job_id, task_type, target_lang, file_name, status, duration_ms,
              error_msg, created_at, started_at, completed_at,
              datetime.fromtimestamp(created_at).strftime("%Y-%m-%d")),
         )
@@ -101,19 +110,26 @@ class MetricsService:
         task_type: Optional[str] = None,
         language: Optional[str] = None,
         status: Optional[str] = None,
+        user_id: Optional[str] = None,
     ) -> dict:
-        """分页返回日期范围内的翻译记录，支持按 type/语言/状态过滤"""
+        """分页返回日期范围内的翻译记录，支持按 type/语言/状态/用户过滤"""
         where_clauses: list[str] = ["created_date BETWEEN ? AND ?"]
         params: list = [start_date, end_date]
         if task_type:
-            where_clauses.append("task_type = ?")
+            where_clauses.append("task_type = ? COLLATE NOCASE")
             params.append(task_type)
         if language:
-            where_clauses.append("target_lang = ?")
+            where_clauses.append("target_lang = ? COLLATE NOCASE")
             params.append(language)
         if status:
-            where_clauses.append("status = ?")
+            if status == "completed":
+                where_clauses.append("status = ? COLLATE NOCASE")
+            else:
+                where_clauses.append("status != ? COLLATE NOCASE")
             params.append(status)
+        if user_id:
+            where_clauses.append("user_id = ? COLLATE NOCASE")
+            params.append(user_id)
         where_sql = "WHERE " + " AND ".join(where_clauses)
 
         conn = self._get_conn()
@@ -128,7 +144,7 @@ class MetricsService:
                 params + [pageSize, offset],
             ).fetchall()
         ]
-        return {"pageNo": pageNo, "pageSize": pageSize, "list": records}
+        return {"pageNo": pageNo, "pageSize": pageSize, "total": total,"list": records}
 
     # 导出表头
     EXCEL_HEADERS = [
@@ -143,19 +159,23 @@ class MetricsService:
         task_type: Optional[str] = None,
         language: Optional[str] = None,
         status: Optional[str] = None,
+        user_id: Optional[str] = None,
     ) -> bytes:
         """导出日期范围内的翻译记录为 xlsx 文件（全量，不分页），返回 bytes"""
         where_clauses: list[str] = ["created_date BETWEEN ? AND ?"]
         params: list = [start_date, end_date]
         if task_type:
-            where_clauses.append("task_type = ?")
+            where_clauses.append("task_type = ? COLLATE NOCASE")
             params.append(task_type)
         if language:
-            where_clauses.append("target_lang = ?")
+            where_clauses.append("target_lang = ? COLLATE NOCASE")
             params.append(language)
         if status:
-            where_clauses.append("status = ?")
+            where_clauses.append("status = ? COLLATE NOCASE")
             params.append(status)
+        if user_id:
+            where_clauses.append("user_id = ? COLLATE NOCASE")
+            params.append(user_id)
         where_sql = "WHERE " + " AND ".join(where_clauses)
 
         rows = self._get_conn().execute(
@@ -180,6 +200,7 @@ class MetricsService:
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
         status: Optional[str] = None,
+        user_id: Optional[str] = None,
     ) -> dict:
         """一次返回：总次数 + 各 type + 平均时长 + 各语言次数（全量对齐 LangMapping）+ 每日次数"""
         where_clauses: list[str] = []
@@ -188,8 +209,11 @@ class MetricsService:
             where_clauses.append("created_date BETWEEN ? AND ?")
             params += [start_date, end_date]
         if status:
-            where_clauses.append("status = ?")
+            where_clauses.append("status = ? COLLATE NOCASE")
             params.append(status)
+        if user_id:
+            where_clauses.append("user_id = ? COLLATE NOCASE")
+            params.append(user_id)
         where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
 
         conn = self._get_conn()
@@ -252,6 +276,7 @@ class MetricsService:
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
         status: Optional[str] = None,
+        user_id: Optional[str] = None,
     ) -> list[dict]:
         """按目标语言分组统计翻译次数；传 target_lang 只返回指定语言的次数"""
         sql = (
@@ -260,14 +285,17 @@ class MetricsService:
         )
         params: list = []
         if target_lang:
-            sql += " AND target_lang = ?"
+            sql += " AND target_lang = ? COLLATE NOCASE"
             params.append(target_lang)
         if start_date and end_date:
             sql += " AND created_date BETWEEN ? AND ?"
             params += [start_date, end_date]
         if status:
-            sql += " AND status = ?"
+            sql += " AND status = ? COLLATE NOCASE"
             params.append(status)
+        if user_id:
+            sql += " AND user_id = ? COLLATE NOCASE"
+            params.append(user_id)
         sql += " GROUP BY target_lang ORDER BY cnt DESC"
         return [dict(r) for r in self._get_conn().execute(sql, params).fetchall()]
 
@@ -277,6 +305,7 @@ class MetricsService:
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
         status: Optional[str] = None,
+        user_id: Optional[str] = None,
     ) -> list[dict]:
         """按任务类型（text/picture/file）分组统计翻译次数；传 task_type 只返回指定类型的次数"""
         sql = (
@@ -285,14 +314,17 @@ class MetricsService:
         )
         params: list = []
         if task_type:
-            sql += " AND task_type = ?"
+            sql += " AND task_type = ? COLLATE NOCASE"
             params.append(task_type)
         if start_date and end_date:
             sql += " AND created_date BETWEEN ? AND ?"
             params += [start_date, end_date]
         if status:
-            sql += " AND status = ?"
+            sql += " AND status = ? COLLATE NOCASE"
             params.append(status)
+        if user_id:
+            sql += " AND user_id = ? COLLATE NOCASE"
+            params.append(user_id)
         sql += " GROUP BY task_type ORDER BY cnt DESC"
         return [dict(r) for r in self._get_conn().execute(sql, params).fetchall()]
 
@@ -300,10 +332,15 @@ class MetricsService:
         self,
         start_date: str,
         end_date: str,
+        user_id: str|None = None,
     ) -> dict:
         """概览：总次数 + 成功/失败占比(%) + 平均耗时(ms)"""
+        where_clauses: list[str] = ["created_date BETWEEN ? AND ?"]
         params: list = [start_date, end_date]
-        where_sql = "WHERE created_date BETWEEN ? AND ?"
+        if user_id:
+            where_clauses.append("user_id = ? COLLATE NOCASE")
+            params.append(user_id)
+        where_sql = "WHERE " + " AND ".join(where_clauses)
 
         conn = self._get_conn()
 
@@ -337,28 +374,43 @@ class MetricsService:
             "avg_duration": avg_duration,
         }
 
-    def interface1(self) -> dict:
+    def interface1(self, user_id: str|None = None) -> dict:
         """返回最近 14 天每日翻译次数，补全缺失日期：{date: [...], count: [...]}"""
         today = datetime.now().date()
         start = today - timedelta(days=13)
         date_list = [(start + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(14)]
-        rows = self._get_conn().execute(
-            "SELECT created_date, COUNT(*) AS cnt FROM translate_records "
-            "WHERE created_date BETWEEN ? AND ? GROUP BY created_date",
-            [date_list[0], date_list[-1]],
-        ).fetchall()
+
+        if user_id:
+            rows = self._get_conn().execute(
+                "SELECT created_date, COUNT(*) AS cnt FROM translate_records "
+                "WHERE created_date BETWEEN ? AND ? AND user_id = ? COLLATE NOCASE GROUP BY created_date",
+                [date_list[0], date_list[-1], user_id],
+            ).fetchall()
+        else:
+            rows = self._get_conn().execute(
+                "SELECT created_date, COUNT(*) AS cnt FROM translate_records "
+                "WHERE created_date BETWEEN ? AND ? GROUP BY created_date",
+                [date_list[0], date_list[-1]],
+            ).fetchall()
         cnt_map = {r["created_date"]: r["cnt"] for r in rows}
         return {
             "date": date_list,
             "count": [cnt_map.get(d, 0) for d in date_list],
         }
 
-    def interface3(self, start_date: str, end_date: str) -> dict:
-        rows = self._get_conn().execute(
-            "SELECT target_lang, COUNT(*) AS cnt FROM translate_records "
-            "WHERE created_date BETWEEN ? AND ? GROUP BY target_lang",
-            [start_date, end_date],
-        ).fetchall()
+    def interface3(self, start_date: str, end_date: str, user_id: str|None = None) -> dict:
+        if user_id:
+            rows = self._get_conn().execute(
+                "SELECT target_lang, COUNT(*) AS cnt FROM translate_records "
+                "WHERE created_date BETWEEN ? AND ? AND user_id = ? COLLATE NOCASE GROUP BY target_lang",
+                [start_date, end_date, user_id],
+            ).fetchall()
+        else:
+            rows = self._get_conn().execute(
+                "SELECT target_lang, COUNT(*) AS cnt FROM translate_records "
+                "WHERE created_date BETWEEN ? AND ? GROUP BY target_lang",
+                [start_date, end_date],
+            ).fetchall()
         lang_map = {r["target_lang"]: r["cnt"] for r in rows}
         languages = [
             {"name": LangMapping.MAP[code], "value": lang_map.get(code, 0)}
@@ -368,3 +420,38 @@ class MetricsService:
             "name": [r["name"] for r in languages],
             "count": [r["value"] for r in languages],
             }
+
+    def get_completed(
+            self,
+            file_name: Optional[str] = None,
+            status: Optional[str] = None,
+            user_id: Optional[str] = None,
+        ) -> list[dict]:
+        """根据 file_name（前缀模糊匹配 startswith）、status、user_id 查询翻译记录"""
+        sql = "SELECT * FROM translate_records WHERE 1=1"
+        params: list = []
+
+        if file_name:
+            name = file_name.strip()
+            if name.startswith("截图"):
+                sql += " AND task_type = ? COLLATE NOCASE"
+                params.append("picture")
+            elif name.startswith("文本"):
+                sql += " AND task_type = ? COLLATE NOCASE"
+                params.append("text")
+            else:
+                # startswith：以传入内容开头，后面任意字符
+                sql += " AND file_name LIKE ? || '%' COLLATE NOCASE"
+                params.append(name)
+
+        if status:
+            sql += " AND status = ? COLLATE NOCASE"
+            params.append(status)
+
+        if user_id:
+            sql += " AND user_id = ? COLLATE NOCASE"
+            params.append(user_id)
+
+        sql += " ORDER BY completed_at DESC"
+        rows = self._get_conn().execute(sql, params).fetchall()
+        return [dict(r) for r in rows]

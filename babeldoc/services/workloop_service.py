@@ -31,6 +31,7 @@ async def _handle_task(task: Task) -> None:
             task.file_name,
             started_at=task.started_at,
             completed_at=task.completed_at,
+            user_id=task.zdata.USER_ID,
         )
     except asyncio.CancelledError:
         logger.info(f"任务被取消: task_id={task.task_id}")
@@ -45,6 +46,7 @@ async def _handle_task(task: Task) -> None:
             task.file_name,
             started_at=task.started_at,
             error_msg="任务已取消",
+            user_id=task.zdata.USER_ID,
         )
 
         if config.callback_url:
@@ -67,6 +69,7 @@ async def _handle_task(task: Task) -> None:
             task.file_name,
             started_at=task.started_at,
             error_msg=str(e),
+            user_id=task.zdata.USER_ID,
         )
 
         raise e
@@ -84,3 +87,4 @@ async def worker_loop() -> None:
         await semaphore.acquire()
         asyncio_task = asyncio.create_task(_handle_task(task))
         task._asyncio_task = asyncio_task
+

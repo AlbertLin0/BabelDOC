@@ -10,7 +10,7 @@ config = get_config()
 
 async def file_upload(file_path: str, ArcId: str) -> OpenTextUploadResponse:
     """从工作区中上传文件到OpenText"""
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=60) as client:
         headers = {
             "USERNAME": config.USERNAME,
             "PASSWORD": config.PASSWORD
@@ -33,7 +33,7 @@ async def file_download(ArcId: str, DocId: str, file_path: str) -> None:
     # 从 file_url 提取外网 host（如 10.0.0.111:8080）
     external_host = urlparse(config.file_url).netloc
 
-    async with httpx.AsyncClient(follow_redirects=False) as client:
+    async with httpx.AsyncClient(follow_redirects=False, timeout=60) as client:
         response = await client.get(
             f"{config.file_url}/uploadFile/ShowFile?ArcId={ArcId}&DocId={DocId}",
         )

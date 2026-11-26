@@ -258,7 +258,7 @@ openai_config:
 # 
 max_concurrent_translations: 10
 
-mineru_base_url: "http://10.16.6.191:8011"
+mineru_base_url: "http://10.16.6.191:8001"
 # mineru parameters setted in _mineru.py
 
 # PO API 
