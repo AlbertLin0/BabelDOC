@@ -8,6 +8,7 @@ import zipfile
 from pathlib import Path
 
 from babeldoc.config.config import get_config
+from babeldoc.glossary import Glossary
 from mineru.types import MiddleJson
 from mineru.render import (
     PdfLayout,
@@ -274,11 +275,55 @@ def _restore_base64_images(text: str, placeholders: list[str]) -> str:
     return text
 
 
+def _build_glossary_block_for_batch(
+    batch: list[str],
+    glossaries: list[Glossary] | None,
+) -> str:
+    """对一个 batch 的所有文本做 glossary 匹配，生成 markdown glossary 块。
+
+    和 il_translator._build_glossary_block 格式一致，复用同一套 prompt 约定。
+    """
+    if not glossaries:
+        return ""
+
+    # 把 batch 拼成一个大字符串做一次扫描，效率更高
+    combined_text = "\n\n".join(batch)
+
+    glossary_entries_per_glossary: dict[str, list[tuple[str, str]]] = {}
+    for glossary in glossaries:
+        active_entries = glossary.get_active_entries_for_text(combined_text)
+        if active_entries:
+            glossary_entries_per_glossary[glossary.name] = sorted(active_entries)
+
+    if not glossary_entries_per_glossary:
+        return ""
+
+    lines: list[str] = [
+        "## Glossary",
+        "",
+        "Always use the glossary's **Target Term** for any occurrence of its **Source Term** "
+        "(including variants, inside tags, or broken across lines).",
+        "",
+        "Unlisted terms are translated naturally.",
+        "",
+    ]
+    for glossary_name, entries in glossary_entries_per_glossary.items():
+        lines.append(f"### Glossary: {glossary_name}")
+        lines.append("")
+        lines.append("| Source Term | Target Term |\n|-------------|-------------|")
+        for src, tgt in entries:
+            lines.append(f"| {src} | {tgt} |")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
 def translate_middle_json(
     middle_json: MiddleJson,
     translator: OpenAITranslator,
     batch_size: int = 20,
-    target_lang: str | None = None
+    target_lang: str | None = None,
+    glossaries: list[Glossary] | None = None,
 ):
     """翻译 MiddleJson 中的文本。"""
 
@@ -305,9 +350,19 @@ def translate_middle_json(
                 f"开始翻译批次：{batch_start // batch_size + 1}"
             )
 
-            batch_prompt = json.dumps(
+            # 🔑 为当前 batch 匹配活跃 glossary 术语
+            glossary_block = _build_glossary_block_for_batch(batch, glossaries)
+
+            batch_json = json.dumps(
                 batch,
                 ensure_ascii=False,
+            )
+            # 把 glossary 指令拼在 JSON 数组前面，LLM 能同时看到规则和数据
+            batch_prompt = (
+                f"{glossary_block}\n\n"
+                f"待翻译 JSON 数组:\n{batch_json}"
+                if glossary_block
+                else batch_json
             )
 
             response_text = translator.do_translate(batch_prompt, lang_out=target_lang)
@@ -399,10 +454,28 @@ def render_pdf(
     task_output_dir: Path,
     translator: OpenAITranslator,
     target_lang: str = "zh",
+    glossaries: list[Glossary] | None = None,
 ) -> dict:
     """
     MinerU PDF 解析 -> 文本翻译 -> PDF 渲染。
+
+    glossaries 预加载在 TranslationManager 单例里（按目标语言索引），
+    这里自动按 target_lang 取。如果显式传入 glossaries，则优先用传入的。
     """
+
+    # 🔑 自动从 TranslationManager 单例取预加载好的 glossary
+    if glossaries is None:
+        try:
+            from babeldoc.services.translation_service import manager
+            lang_key = target_lang.strip().lower().replace("-", "_")
+            glossaries = manager.glossaries_by_target_language.get(lang_key, [])
+            if glossaries:
+                logger.info(
+                    f"从 TranslationManager 加载目标语言 [{target_lang}] 的 glossary，共 {len(glossaries)} 个"
+                )
+        except Exception as e:
+            logger.debug(f"未从 TranslationManager 取到 glossary: {e}")
+            glossaries = None
 
     task_output_dir.mkdir(
         parents=True,
@@ -434,7 +507,8 @@ def render_pdf(
         middle_json,
         translator,
         batch_size=20,
-        target_lang=target_lang
+        target_lang=target_lang,
+        glossaries=glossaries,
     )
 
     logger.info("文本翻译完成")
