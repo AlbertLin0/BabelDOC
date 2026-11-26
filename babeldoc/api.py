@@ -3,6 +3,8 @@ load_dotenv()
 
 import asyncio
 import json
+from pathlib import Path
+
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
@@ -14,6 +16,8 @@ from babeldoc.routers.po_router import router as po_router
 from babeldoc.routers.queue_router import router as queue_router
 from babeldoc.routers.metric_router import router as metric_router
 from babeldoc.routers.account_router import router as account_router
+from babeldoc.services.translation_service import manager
+from babeldoc.glossary import Glossary
 
 from babeldoc.utils.rsa import encrypt_data
 from babeldoc.config.config import random_str_generate
@@ -40,7 +44,23 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def on_startup() -> None:
-    """应用启动时后台启动 Worker"""
+    """预加载术语库并在后台启动 Worker。"""
+    if config.glossary_file:
+        glossary_path = Path(config.glossary_file).expanduser()
+        if not glossary_path.is_absolute():
+            glossary_path = Path(__file__).resolve().parent.parent / glossary_path
+        manager.glossaries_by_target_language = (
+            Glossary.from_excel_by_target_language(glossary_path)
+        )
+        logger.info(
+            "预加载术语库完成: path=%s, target_languages=%s, entries=%s",
+            glossary_path,
+            len(manager.glossaries_by_target_language),
+            sum(
+                len(glossary.entries)
+                for glossary in manager.glossaries_by_target_language.values()
+            ),
+        )
     asyncio.create_task(worker_loop())
 
 

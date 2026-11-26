@@ -28,6 +28,7 @@ class Config:
         self.max_concurrent_translations = self._raw["max_concurrent_translations"]
         self.mineru_base_url = self._raw["mineru_base_url"]
         self.debug = self._raw["debug"]
+        self.glossary_file = self._raw.get("glossary_file")
 
         # PO API 
         self.ZORG = self._raw["ZORG"]

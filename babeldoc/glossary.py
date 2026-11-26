@@ -8,9 +8,22 @@ from pathlib import Path
 
 import chardet
 import hyperscan
+from openpyxl import load_workbook
 import regex
 
 logger = logging.getLogger(__name__)
+
+EXCEL_LANGUAGE_COLUMNS = {
+    "中文": ("zh", "中文简拼"),
+    "英语": ("en", "英语简拼"),
+    "西班牙语": ("es", None),
+    "泰语": ("th", None),
+    "德语": ("de", None),
+    "法语": ("fr", None),
+    "俄语": ("ru", None),
+    "土耳其语": ("tr", "土耳其语简拼"),
+    "波兰语": ("pl", None),
+}
 
 
 class GlossaryEntry:
@@ -168,6 +181,93 @@ class Glossary:
             ) from e
 
         return cls(name=glossary_name, entries=loaded_entries)
+
+    @classmethod
+    def from_excel_by_target_language(
+        cls, file_path: Path
+    ) -> dict[str, "Glossary"]:
+        """Loads a multilingual Excel glossary and builds one glossary per target language.
+
+        Each language column is used as a source for every other target language.
+        Chinese and English pinyin columns are included as alternate source terms.
+        """
+        glossary_name = file_path.stem
+        workbook = load_workbook(file_path, read_only=True, data_only=True)
+        try:
+            worksheet = workbook.active
+            rows = worksheet.iter_rows(values_only=True)
+            headers = next(rows, None)
+            if not headers:
+                raise ValueError(f"Excel glossary {file_path} is empty.")
+
+            header_indexes = {
+                re.sub(r"\s+", "", str(header)).lower(): index
+                for index, header in enumerate(headers)
+                if header is not None and str(header).strip()
+            }
+
+            language_indexes: dict[str, tuple[int, int | None]] = {}
+            for language_name, (language_code, alias_name) in (
+                EXCEL_LANGUAGE_COLUMNS.items()
+            ):
+                language_index = header_indexes.get(language_name.lower())
+                if language_index is None:
+                    continue
+                alias_index = (
+                    header_indexes.get(alias_name.lower()) if alias_name else None
+                )
+                language_indexes[language_code] = (language_index, alias_index)
+
+            if not language_indexes:
+                raise ValueError(
+                    f"Excel glossary {file_path} has no recognized language columns."
+                )
+
+            entries_by_target: dict[str, list[GlossaryEntry]] = {
+                language_code: []
+                for language_code in language_indexes
+            }
+
+            def cell_value(row, index: int | None) -> str:
+                if index is None or index >= len(row) or row[index] is None:
+                    return ""
+                return str(row[index]).strip()
+
+            for row in rows:
+                for target_language, (target_index, _) in language_indexes.items():
+                    target = cell_value(row, target_index)
+                    if not target:
+                        continue
+
+                    for source_language, (source_index, alias_index) in (
+                        language_indexes.items()
+                    ):
+                        if source_language == target_language:
+                            continue
+                        source_terms = (
+                            cell_value(row, source_index),
+                            cell_value(row, alias_index),
+                        )
+                        for source in source_terms:
+                            if source:
+                                entries_by_target[target_language].append(
+                                    GlossaryEntry(
+                                        source,
+                                        target,
+                                        target_language,
+                                    )
+                                )
+        finally:
+            workbook.close()
+
+        return {
+            language_code: cls(
+                name=f"{glossary_name}_{language_code}",
+                entries=entries,
+            )
+            for language_code, entries in entries_by_target.items()
+            if entries
+        }
 
     def to_csv(self) -> str:
         """Exports the glossary entries to a CSV formatted string."""

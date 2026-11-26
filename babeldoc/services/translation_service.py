@@ -155,6 +155,7 @@ class TranslationManager:
 
     def __init__(self):
         self.results: Dict[str, Tuple[Path, Path]] = {}
+        self.glossaries_by_target_language = {}
         start_time = time.time()        
         #加载布局模型
         self.doc_layout_model = DocLayoutModel.load_onnx()
@@ -194,6 +195,10 @@ class TranslationManager:
                 translator=self.translator,
                 lang_in=config.lang_in,
                 lang_out=lang_out or config.lang_out,
+                glossaries=self.glossaries_by_target_language.get(
+                    (lang_out or config.lang_out).strip().lower().replace("-", "_"),
+                    [],
+                ),
                 no_dual=False,   #生成双语
                 no_mono=False,   #生成单语
                 qps=config.qps,

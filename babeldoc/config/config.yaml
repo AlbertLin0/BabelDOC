@@ -163,6 +163,9 @@ auto_enable_ocr_workaround: false
 # ==================== Glossary / Term ====================
 # Comma-separated paths to glossary CSV files
 glossary_files: null
+# Optional multilingual .xlsx glossary loaded by the API at startup.
+# Relative paths are resolved from the repository root.
+glossary_file: null
 
 # Disable automatic term extraction
 auto_extract_glossary: true

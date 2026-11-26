@@ -78,6 +78,8 @@ async def get_metric(request: A) -> JSONResponse:
 
 
 
+
+
 @router.post("/metric/export")
 async def export_excel(request: A):
     """导出日期范围内的翻译记录为 Excel 文件下载"""
